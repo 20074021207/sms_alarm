@@ -7,20 +7,26 @@ import android.provider.Telephony
 import com.ccc.smsalarm.data.repository.AlarmRuleRepository
 import com.ccc.smsalarm.data.repository.MatchedSmsRepository
 import com.ccc.smsalarm.service.AlarmService
-import dagger.hilt.android.AndroidEntryPoint
+import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import javax.inject.Inject
 
-@AndroidEntryPoint
 class SmsReceiver : BroadcastReceiver() {
 
-    @Inject lateinit var alarmRuleRepository: AlarmRuleRepository
-    @Inject lateinit var matchedSmsRepository: MatchedSmsRepository
+    private lateinit var alarmRuleRepository: AlarmRuleRepository
+    private lateinit var matchedSmsRepository: MatchedSmsRepository
 
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Telephony.Sms.Intents.SMS_RECEIVED_ACTION) return
+
+        // Manual Hilt injection — more reliable than @AndroidEntryPoint when process is recreated
+        val entryPoint = EntryPointAccessors.fromApplication(
+            context.applicationContext,
+            SmsReceiverEntryPoint::class.java
+        )
+        alarmRuleRepository = entryPoint.alarmRuleRepository()
+        matchedSmsRepository = entryPoint.matchedSmsRepository()
 
         val messages = Telephony.Sms.Intents.getMessagesFromIntent(intent)
         if (messages.isEmpty()) return
@@ -56,5 +62,12 @@ class SmsReceiver : BroadcastReceiver() {
                 pendingResult.finish()
             }
         }
+    }
+
+    @dagger.hilt.InstallIn(dagger.hilt.components.SingletonComponent::class)
+    @dagger.hilt.EntryPoint
+    interface SmsReceiverEntryPoint {
+        fun alarmRuleRepository(): AlarmRuleRepository
+        fun matchedSmsRepository(): MatchedSmsRepository
     }
 }

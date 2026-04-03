@@ -25,6 +25,12 @@
     <!-- Battery optimization -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
+    <!-- Boot -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- AlarmManager exact alarm (Android 12+) -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <application
@@ -64,6 +70,26 @@
             </intent-filter>
         </receiver>
 
+        <receiver
+            android:name=".receiver.BootReceiver"
+            android:exported="true"
+            android:enabled="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="android.intent.action.USER_PRESENT" />
+                <action android:name="android.intent.action.POWER_CONNECTED" />
+                <action android:name="android.intent.action.POWER_DISCONNECTED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
+            android:name=".receiver.RestartReceiver"
+            android:exported="false"
+            android:enabled="true" />
+
         <service
             android:name=".service.AlarmService"
             android:exported="false"
@@ -71,6 +97,18 @@
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="SMS_keyword_alarm_notification" />
+        </service>
+
+        <!-- MonitorService runs in a separate process so it survives when the app is swiped away -->
+        <service
+            android:name=".service.MonitorService"
+            android:exported="false"
+            android:process=":monitor"
+            android:stopWithTask="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="SMS_monitoring_background_service" />
         </service>
 
     </application>
