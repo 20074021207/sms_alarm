@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
@@ -15,13 +16,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import com.ccc.smsalarm.ui.theme.SmsAlarmTheme
 
 @Composable
@@ -29,8 +30,17 @@ fun SetupGuideScreen(onAllGranted: () -> Unit) {
     val context = LocalContext.current
     val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
-    var smsGranted by remember { mutableStateOf(false) }
-    var notificationGranted by remember { mutableStateOf(false) }
+    fun checkSmsGranted(): Boolean =
+        ContextCompat.checkSelfPermission(context, Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED
+
+    fun checkNotificationGranted(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        } else true
+    }
+
+    var smsGranted by remember { mutableStateOf(checkSmsGranted()) }
+    var notificationGranted by remember { mutableStateOf(checkNotificationGranted()) }
     var dndGranted by remember { mutableStateOf(notificationManager.isNotificationPolicyAccessGranted) }
     var batteryOptimized by remember {
         mutableStateOf(
@@ -49,13 +59,19 @@ fun SetupGuideScreen(onAllGranted: () -> Unit) {
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
-        smsGranted = permissions[Manifest.permission.RECEIVE_SMS] ?: false
-        notificationGranted = permissions[Manifest.permission.POST_NOTIFICATIONS] ?: false
+        smsGranted = checkSmsGranted()
+        notificationGranted = checkNotificationGranted()
     }
 
-    LaunchedEffect(smsGranted, notificationGranted, dndGranted, batteryOptimized, fsiGranted) {
-        if (smsGranted && notificationGranted && dndGranted && batteryOptimized && fsiGranted) {
-            onAllGranted()
+    // Refresh all states when screen resumes focus (user returns from settings)
+    LaunchedEffect(Unit) {
+        snapshotFlow {
+            // Periodically recheck on composition
+            Triple(checkSmsGranted(), checkNotificationGranted(), notificationManager.isNotificationPolicyAccessGranted)
+        }.collect { (sms, notif, dnd) ->
+            smsGranted = sms
+            notificationGranted = notif
+            dndGranted = dnd
         }
     }
 
@@ -124,21 +140,28 @@ fun SetupGuideScreen(onAllGranted: () -> Unit) {
                         description = "在锁屏状态下显示告警界面",
                         granted = fsiGranted
                     ) {
-                        context.startActivity(Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT))
+                        context.startActivity(
+                            Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT).apply {
+                                data = Uri.parse("package:${context.packageName}")
+                            }
+                        )
                     }
                 }
 
-                // Manual continue button
                 Spacer(modifier = Modifier.height(16.dp))
 
                 Button(
                     onClick = {
+                        // Recheck all permissions
+                        smsGranted = checkSmsGranted()
+                        notificationGranted = checkNotificationGranted()
                         dndGranted = notificationManager.isNotificationPolicyAccessGranted
                         batteryOptimized = (context.getSystemService(Context.POWER_SERVICE) as PowerManager)
                             .isIgnoringBatteryOptimizations(context.packageName)
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                             fsiGranted = notificationManager.canUseFullScreenIntent()
                         }
+
                         if (smsGranted && notificationGranted && dndGranted && batteryOptimized && fsiGranted) {
                             onAllGranted()
                         }

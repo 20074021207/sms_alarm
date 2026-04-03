@@ -86,6 +86,9 @@ class AlarmService : Service() {
         if (enableVibration) vibrationHelper.startVibration()
         if (enableFlashlight) flashlightHelper.startFlashlight(serviceScope)
 
+        // Notify UI about alarm state
+        AlarmState.trigger(sender, body)
+
         return START_NOT_STICKY
     }
 
@@ -108,10 +111,20 @@ class AlarmService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        // Content intent to open MainActivity with alarm dialog
+        val contentIntent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val contentPendingIntent = PendingIntent.getActivity(
+            this, 1, contentIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_dialog_alert)
             .setContentTitle(getString(R.string.alarm_triggered))
             .setContentText(getString(R.string.keyword_detected))
+            .setContentIntent(contentPendingIntent)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setFullScreenIntent(fullScreenPendingIntent, true)
@@ -142,6 +155,7 @@ class AlarmService : Service() {
         }
         wakeLock = null
         serviceScope.cancel()
+        AlarmState.clear()
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
