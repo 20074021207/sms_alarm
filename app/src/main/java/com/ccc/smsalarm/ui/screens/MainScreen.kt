@@ -3,6 +3,7 @@ package com.ccc.smsalarm.ui.screens
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -54,6 +55,12 @@ fun MainScreen(
                         label = { Text("配置") },
                         icon = { Icon(Icons.Default.Settings, contentDescription = null) }
                     )
+                    NavigationBarItem(
+                        selected = selectedTab == 2,
+                        onClick = { selectedTab = 2 },
+                        label = { Text("保活") },
+                        icon = { Icon(Icons.Default.Security, contentDescription = null) }
+                    )
                 }
             }
         ) { padding ->
@@ -69,6 +76,7 @@ fun MainScreen(
                     onVibrationChange = onVibrationChange,
                     onFlashlightChange = onFlashlightChange
                 )
+                2 -> KeepAliveGuideTab()
             }
         }
 

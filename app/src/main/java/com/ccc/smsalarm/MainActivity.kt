@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.ccc.smsalarm.service.AlarmService
 import com.ccc.smsalarm.service.AlarmState
+import com.ccc.smsalarm.service.KeepAliveWorker
 import com.ccc.smsalarm.service.MonitorService
 import com.ccc.smsalarm.ui.screens.MainScreen
 import com.ccc.smsalarm.ui.screens.SetupGuideScreen
@@ -39,6 +40,9 @@ class MainActivity : ComponentActivity() {
         // Start persistent monitoring service
         val monitorIntent = Intent(this, MonitorService::class.java)
         startForegroundService(monitorIntent)
+
+        // Schedule WorkManager periodic keep-alive check
+        KeepAliveWorker.schedule(this)
 
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val setupDone = prefs.getBoolean(KEY_SETUP_DONE, false)

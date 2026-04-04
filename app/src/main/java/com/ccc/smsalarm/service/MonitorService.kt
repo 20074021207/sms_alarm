@@ -1,8 +1,10 @@
 package com.ccc.smsalarm.service
 
 import android.app.*
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
@@ -80,10 +82,12 @@ class MonitorService : Service() {
     }
 
     private var explicitlyStopped = false
+    private var screenReceiver: BroadcastReceiver? = null
 
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
+        registerScreenReceiver()
         Log.d(TAG, "MonitorService created in process: ${getProcessName()}")
     }
 
@@ -129,9 +133,9 @@ class MonitorService : Service() {
     override fun onDestroy() {
         Log.w(TAG, "onDestroy: explicitlyStopped=$explicitlyStopped")
         if (!explicitlyStopped) {
-            // Service killed unexpectedly — schedule restart
             scheduleRestart(this, RESTART_DELAY_MS)
         }
+        unregisterScreenReceiver()
         super.onDestroy()
     }
 
@@ -194,4 +198,37 @@ class MonitorService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    private fun registerScreenReceiver() {
+        if (screenReceiver != null) return
+        screenReceiver = object : BroadcastReceiver() {
+            override fun onReceive(ctx: Context, intent: Intent) {
+                when (intent.action) {
+                    Intent.ACTION_SCREEN_OFF -> {
+                        Log.d(TAG, "Screen OFF — starting OnePixelActivity")
+                        OnePixelActivity.start(ctx)
+                    }
+                    Intent.ACTION_SCREEN_ON -> {
+                        Log.d(TAG, "Screen ON — finishing OnePixelActivity")
+                        OnePixelActivity.finishSelf()
+                    }
+                }
+            }
+        }
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_SCREEN_OFF)
+            addAction(Intent.ACTION_SCREEN_ON)
+        }
+        registerReceiver(screenReceiver, filter)
+        Log.d(TAG, "ScreenReceiver registered")
+    }
+
+    private fun unregisterScreenReceiver() {
+        screenReceiver?.let {
+            try {
+                unregisterReceiver(it)
+            } catch (_: Exception) {}
+            screenReceiver = null
+        }
+    }
 }
