@@ -77,6 +77,7 @@ private fun MainContent() {
             rules = rules,
             settings = settings,
             onAddRule = { keywords, mode -> viewModel.addRule(keywords, mode) },
+            onEditRule = { rule, keywords, mode -> viewModel.updateRule(rule, keywords, mode) },
             onDeleteRule = { viewModel.deleteRule(it) },
             onToggleRule = { viewModel.toggleRule(it) },
             onVolumeChange = { viewModel.updateVolume(it) },

@@ -48,6 +48,12 @@ class MainViewModel @Inject constructor(
         }
     }
 
+    fun updateRule(rule: AlarmRuleEntity, keywords: List<String>, matchMode: MatchMode) {
+        viewModelScope.launch {
+            alarmRuleRepository.updateRule(rule.copy(keywords = keywords, matchMode = matchMode))
+        }
+    }
+
     fun updateVolume(volume: Int) {
         viewModelScope.launch { settingsRepository.updateVolume(volume) }
     }

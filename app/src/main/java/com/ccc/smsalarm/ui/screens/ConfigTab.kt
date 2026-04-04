@@ -1,6 +1,7 @@
 package com.ccc.smsalarm.ui.screens
 
 import android.media.AudioManager
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -22,6 +23,7 @@ fun ConfigTab(
     rules: List<AlarmRuleEntity>,
     settings: AppSettings,
     onAddRule: (keywords: List<String>, matchMode: MatchMode) -> Unit,
+    onEditRule: (rule: AlarmRuleEntity, keywords: List<String>, matchMode: MatchMode) -> Unit,
     onDeleteRule: (AlarmRuleEntity) -> Unit,
     onToggleRule: (AlarmRuleEntity) -> Unit,
     onVolumeChange: (Int) -> Unit,
@@ -29,6 +31,7 @@ fun ConfigTab(
     onFlashlightChange: (Boolean) -> Unit
 ) {
     var showAddDialog by remember { mutableStateOf(false) }
+    var editingRule by remember { mutableStateOf<AlarmRuleEntity?>(null) }
 
     if (showAddDialog) {
         AddRuleDialog(
@@ -36,6 +39,17 @@ fun ConfigTab(
             onConfirm = { keywords, mode ->
                 onAddRule(keywords, mode)
                 showAddDialog = false
+            }
+        )
+    }
+
+    editingRule?.let { rule ->
+        EditRuleDialog(
+            rule = rule,
+            onDismiss = { editingRule = null },
+            onConfirm = { keywords, mode ->
+                onEditRule(rule, keywords, mode)
+                editingRule = null
             }
         )
     }
@@ -64,7 +78,8 @@ fun ConfigTab(
             RuleItem(
                 rule = rule,
                 onToggle = { onToggleRule(rule) },
-                onDelete = { onDeleteRule(rule) }
+                onDelete = { onDeleteRule(rule) },
+                onClick = { editingRule = rule }
             )
         }
 
@@ -127,7 +142,8 @@ fun ConfigTab(
 private fun RuleItem(
     rule: AlarmRuleEntity,
     onToggle: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onClick: () -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -144,7 +160,11 @@ private fun RuleItem(
                 .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(modifier = Modifier.weight(1f)) {
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable(onClick = onClick)
+            ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     rule.keywords.forEach { kw ->
                         AssistChip(
@@ -179,6 +199,77 @@ private fun AddRuleDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("添加规则") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = keywordText,
+                    onValueChange = { keywordText = it },
+                    label = { Text("关键词") },
+                    placeholder = { Text("多个关键词用逗号分隔") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = false,
+                    maxLines = 3
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        RadioButton(
+                            selected = matchMode == MatchMode.ANY,
+                            onClick = { matchMode = MatchMode.ANY }
+                        )
+                        Text("任一匹配")
+                    }
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        RadioButton(
+                            selected = matchMode == MatchMode.ALL,
+                            onClick = { matchMode = MatchMode.ALL }
+                        )
+                        Text("全部匹配")
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    val keywords = keywordText
+                        .split(",")
+                        .map { it.trim() }
+                        .filter { it.isNotEmpty() }
+                    if (keywords.isNotEmpty()) {
+                        onConfirm(keywords, matchMode)
+                    }
+                },
+                enabled = keywordText.trim().isNotEmpty()
+            ) {
+                Text("确认")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("取消")
+            }
+        }
+    )
+}
+
+@Composable
+private fun EditRuleDialog(
+    rule: AlarmRuleEntity,
+    onDismiss: () -> Unit,
+    onConfirm: (keywords: List<String>, matchMode: MatchMode) -> Unit
+) {
+    var keywordText by remember { mutableStateOf(rule.keywords.joinToString(", ")) }
+    var matchMode by remember { mutableStateOf(rule.matchMode) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("编辑规则") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
