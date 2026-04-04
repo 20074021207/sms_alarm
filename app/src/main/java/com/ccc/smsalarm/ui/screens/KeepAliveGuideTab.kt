@@ -6,6 +6,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
+import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -108,18 +109,11 @@ fun KeepAliveGuideTab() {
         // 4. Background unrestricted
         BackgroundCard(context)
 
-        // 5. Open app settings shortcut
-        OutlinedButton(
-            onClick = { context.startActivity(openAppSettings(context)) },
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("打开应用设置")
-        }
-
-        // 6. Schedule WorkManager
+        // 5. Schedule WorkManager
         Button(
             onClick = {
                 KeepAliveWorker.schedule(context)
+                Toast.makeText(context, "定时保活任务已启动", Toast.LENGTH_SHORT).show()
             },
             modifier = Modifier.fillMaxWidth()
         ) {

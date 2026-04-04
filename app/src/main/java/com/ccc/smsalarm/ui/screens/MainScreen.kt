@@ -64,19 +64,21 @@ fun MainScreen(
                 }
             }
         ) { padding ->
-            when (selectedTab) {
-                0 -> SmsListTab(smsList)
-                1 -> ConfigTab(
-                    rules = rules,
-                    settings = settings,
-                    onAddRule = onAddRule,
-                    onDeleteRule = onDeleteRule,
-                    onToggleRule = onToggleRule,
-                    onVolumeChange = onVolumeChange,
-                    onVibrationChange = onVibrationChange,
-                    onFlashlightChange = onFlashlightChange
-                )
-                2 -> KeepAliveGuideTab()
+            Box(modifier = Modifier.padding(padding)) {
+                when (selectedTab) {
+                    0 -> SmsListTab(smsList)
+                    1 -> ConfigTab(
+                        rules = rules,
+                        settings = settings,
+                        onAddRule = onAddRule,
+                        onDeleteRule = onDeleteRule,
+                        onToggleRule = onToggleRule,
+                        onVolumeChange = onVolumeChange,
+                        onVibrationChange = onVibrationChange,
+                        onFlashlightChange = onFlashlightChange
+                    )
+                    2 -> KeepAliveGuideTab()
+                }
             }
         }
 
