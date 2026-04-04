@@ -7,7 +7,9 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ServiceInfo
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.ccc.smsalarm.MainActivity
@@ -83,6 +85,7 @@ class MonitorService : Service() {
 
     private var explicitlyStopped = false
     private var screenReceiver: BroadcastReceiver? = null
+    private val handler = Handler(Looper.getMainLooper())
 
     override fun onCreate() {
         super.onCreate()
@@ -173,9 +176,11 @@ class MonitorService : Service() {
             .setContentTitle(getString(R.string.monitor_running))
             .setContentText(getString(R.string.monitor_running_desc))
             .setContentIntent(contentPendingIntent)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setOngoing(true)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setTicker(getString(R.string.monitor_running))
             .addAction(
                 android.R.drawable.ic_menu_close_clear_cancel,
                 getString(R.string.stop_monitor),
@@ -188,10 +193,11 @@ class MonitorService : Service() {
         val channel = NotificationChannel(
             CHANNEL_ID,
             getString(R.string.monitor_channel_name),
-            NotificationManager.IMPORTANCE_LOW
+            NotificationManager.IMPORTANCE_DEFAULT
         ).apply {
             description = "短信监控服务状态"
             lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+            setShowBadge(false)
         }
         val manager = getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(channel)
@@ -209,8 +215,19 @@ class MonitorService : Service() {
                         OnePixelActivity.start(ctx)
                     }
                     Intent.ACTION_SCREEN_ON -> {
-                        Log.d(TAG, "Screen ON — finishing OnePixelActivity")
-                        OnePixelActivity.finishSelf()
+                        // Delay finish to avoid immediate process priority drop
+                        Log.d(TAG, "Screen ON — scheduling delayed finish of OnePixelActivity")
+                        handler.postDelayed({
+                            OnePixelActivity.finishSelf()
+                            // Re-ensure foreground notification after activity closes
+                            refreshNotification()
+                        }, 3000)
+                    }
+                    Intent.ACTION_USER_PRESENT -> {
+                        // User just unlocked — safety net: refresh notification and schedule restart
+                        Log.d(TAG, "USER_PRESENT — refreshing service")
+                        refreshNotification()
+                        scheduleRestart(ctx, 5000)
                     }
                 }
             }
@@ -218,6 +235,7 @@ class MonitorService : Service() {
         val filter = IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_OFF)
             addAction(Intent.ACTION_SCREEN_ON)
+            addAction(Intent.ACTION_USER_PRESENT)
         }
         registerReceiver(screenReceiver, filter)
         Log.d(TAG, "ScreenReceiver registered")
@@ -229,6 +247,17 @@ class MonitorService : Service() {
                 unregisterReceiver(it)
             } catch (_: Exception) {}
             screenReceiver = null
+        }
+    }
+
+    /** Refresh the foreground notification to keep the process alive */
+    private fun refreshNotification() {
+        try {
+            val notification = buildNotification()
+            val nm = getSystemService(NotificationManager::class.java)
+            nm.notify(NOTIFICATION_ID, notification)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to refresh notification", e)
         }
     }
 }

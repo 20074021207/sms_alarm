@@ -31,7 +31,8 @@ fun SetupGuideScreen(onAllGranted: () -> Unit) {
     val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
     fun checkSmsGranted(): Boolean =
-        ContextCompat.checkSelfPermission(context, Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED
+        ContextCompat.checkSelfPermission(context, Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED &&
+        ContextCompat.checkSelfPermission(context, Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED
 
     fun checkNotificationGranted(): Boolean {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -102,10 +103,10 @@ fun SetupGuideScreen(onAllGranted: () -> Unit) {
                 // SMS & Notification permissions
                 PermissionItem(
                     title = "短信和通知权限",
-                    description = "接收短信并发送告警通知",
+                    description = "接收并读取短信，发送告警通知",
                     granted = smsGranted && notificationGranted
                 ) {
-                    val perms = mutableListOf(Manifest.permission.RECEIVE_SMS)
+                    val perms = mutableListOf(Manifest.permission.RECEIVE_SMS, Manifest.permission.READ_SMS)
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                         perms.add(Manifest.permission.POST_NOTIFICATIONS)
                     }
