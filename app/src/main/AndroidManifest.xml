@@ -32,9 +32,6 @@
     <!-- AlarmManager exact alarm (Android 12+) -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
 
-    <!-- Overlay permission for 1-pixel keep-alive Activity -->
-    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
-
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <application
@@ -114,15 +111,6 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="SMS_monitoring_background_service" />
         </service>
-
-        <!-- 1-pixel Activity for keep-alive when screen is off -->
-        <activity
-            android:name=".service.OnePixelActivity"
-            android:exported="false"
-            android:excludeFromRecents="true"
-            android:taskAffinity=""
-            android:launchMode="singleInstance"
-            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
     </application>
 </manifest>

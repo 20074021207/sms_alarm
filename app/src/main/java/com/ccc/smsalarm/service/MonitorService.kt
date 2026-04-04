@@ -7,9 +7,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ServiceInfo
 import android.os.Build
-import android.os.Handler
 import android.os.IBinder
-import android.os.Looper
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.ccc.smsalarm.MainActivity
@@ -28,7 +26,6 @@ class MonitorService : Service() {
         private const val RESTART_DELAY_MS = 1000L
         private const val WATCHDOG_INTERVAL_MS = 5 * 60_000L // 5 minutes
 
-        /** Schedule a one-shot restart via AlarmManager */
         fun scheduleRestart(context: Context, delayMs: Long = RESTART_DELAY_MS) {
             try {
                 val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
@@ -48,7 +45,6 @@ class MonitorService : Service() {
             }
         }
 
-        /** Schedule periodic watchdog to check service liveness */
         fun scheduleWatchdog(context: Context) {
             try {
                 val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
@@ -84,13 +80,12 @@ class MonitorService : Service() {
     }
 
     private var explicitlyStopped = false
-    private var screenReceiver: BroadcastReceiver? = null
-    private val handler = Handler(Looper.getMainLooper())
+    private var userPresentReceiver: BroadcastReceiver? = null
 
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
-        registerScreenReceiver()
+        registerUserPresentReceiver()
         Log.d(TAG, "MonitorService created in process: ${getProcessName()}")
     }
 
@@ -116,17 +111,11 @@ class MonitorService : Service() {
             startForeground(NOTIFICATION_ID, notification)
         }
 
-        // Schedule periodic watchdog
         scheduleWatchdog(this)
 
         return START_STICKY
     }
 
-    /**
-     * Called when the user swipes the app from recents.
-     * If running in a separate process, this process survives.
-     * Schedule a restart as safety net.
-     */
     override fun onTaskRemoved(rootIntent: Intent?) {
         Log.w(TAG, "Task removed — scheduling restart")
         scheduleRestart(this, RESTART_DELAY_MS)
@@ -138,7 +127,7 @@ class MonitorService : Service() {
         if (!explicitlyStopped) {
             scheduleRestart(this, RESTART_DELAY_MS)
         }
-        unregisterScreenReceiver()
+        unregisterUserPresentReceiver()
         super.onDestroy()
     }
 
@@ -147,7 +136,6 @@ class MonitorService : Service() {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             Application.getProcessName()
         } else {
-            // Fallback for older APIs
             val pid = android.os.Process.myPid()
             val manager = getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
             manager.runningAppProcesses?.find { it.pid == pid }?.processName ?: "unknown"
@@ -205,59 +193,37 @@ class MonitorService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    private fun registerScreenReceiver() {
-        if (screenReceiver != null) return
-        screenReceiver = object : BroadcastReceiver() {
+    /**
+     * Listen for USER_PRESENT (user unlocked screen) as a safety net
+     * to refresh the foreground notification.
+     */
+    private fun registerUserPresentReceiver() {
+        if (userPresentReceiver != null) return
+        userPresentReceiver = object : BroadcastReceiver() {
             override fun onReceive(ctx: Context, intent: Intent) {
-                when (intent.action) {
-                    Intent.ACTION_SCREEN_OFF -> {
-                        Log.d(TAG, "Screen OFF — starting OnePixelActivity")
-                        OnePixelActivity.start(ctx)
-                    }
-                    Intent.ACTION_SCREEN_ON -> {
-                        // Delay finish to avoid immediate process priority drop
-                        Log.d(TAG, "Screen ON — scheduling delayed finish of OnePixelActivity")
-                        handler.postDelayed({
-                            OnePixelActivity.finishSelf()
-                            // Re-ensure foreground notification after activity closes
-                            refreshNotification()
-                        }, 3000)
-                    }
-                    Intent.ACTION_USER_PRESENT -> {
-                        // User just unlocked — safety net: refresh notification and schedule restart
-                        Log.d(TAG, "USER_PRESENT — refreshing service")
-                        refreshNotification()
-                        scheduleRestart(ctx, 5000)
+                if (intent.action == Intent.ACTION_USER_PRESENT) {
+                    Log.d(TAG, "USER_PRESENT — refreshing notification")
+                    try {
+                        val notification = buildNotification()
+                        val nm = getSystemService(NotificationManager::class.java)
+                        nm.notify(NOTIFICATION_ID, notification)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to refresh notification", e)
                     }
                 }
             }
         }
-        val filter = IntentFilter().apply {
-            addAction(Intent.ACTION_SCREEN_OFF)
-            addAction(Intent.ACTION_SCREEN_ON)
-            addAction(Intent.ACTION_USER_PRESENT)
-        }
-        registerReceiver(screenReceiver, filter)
-        Log.d(TAG, "ScreenReceiver registered")
+        val filter = IntentFilter(Intent.ACTION_USER_PRESENT)
+        registerReceiver(userPresentReceiver, filter)
+        Log.d(TAG, "UserPresentReceiver registered")
     }
 
-    private fun unregisterScreenReceiver() {
-        screenReceiver?.let {
+    private fun unregisterUserPresentReceiver() {
+        userPresentReceiver?.let {
             try {
                 unregisterReceiver(it)
             } catch (_: Exception) {}
-            screenReceiver = null
-        }
-    }
-
-    /** Refresh the foreground notification to keep the process alive */
-    private fun refreshNotification() {
-        try {
-            val notification = buildNotification()
-            val nm = getSystemService(NotificationManager::class.java)
-            nm.notify(NOTIFICATION_ID, notification)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to refresh notification", e)
+            userPresentReceiver = null
         }
     }
 }
