@@ -32,6 +32,9 @@
     <!-- AlarmManager exact alarm (Android 12+) -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
 
+    <!-- Overlay / Floating Window -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <application
