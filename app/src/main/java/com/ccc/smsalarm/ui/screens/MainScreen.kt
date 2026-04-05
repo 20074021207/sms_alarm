@@ -32,6 +32,7 @@ fun MainScreen(
     onEditRule: (rule: AlarmRuleEntity, keywords: List<String>, matchMode: MatchMode) -> Unit,
     onDeleteRule: (AlarmRuleEntity) -> Unit,
     onToggleRule: (AlarmRuleEntity) -> Unit,
+    onMonitoringChange: (Boolean) -> Unit,
     onVolumeChange: (Int) -> Unit,
     onVibrationChange: (Boolean) -> Unit,
     onFlashlightChange: (Boolean) -> Unit
@@ -75,6 +76,7 @@ fun MainScreen(
                         onEditRule = onEditRule,
                         onDeleteRule = onDeleteRule,
                         onToggleRule = onToggleRule,
+                        onMonitoringChange = onMonitoringChange,
                         onVolumeChange = onVolumeChange,
                         onVibrationChange = onVibrationChange,
                         onFlashlightChange = onFlashlightChange

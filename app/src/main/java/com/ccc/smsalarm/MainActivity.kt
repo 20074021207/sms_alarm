@@ -16,6 +16,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.ccc.smsalarm.data.repository.SettingsRepository
 import com.ccc.smsalarm.service.AlarmService
 import com.ccc.smsalarm.service.AlarmState
 import com.ccc.smsalarm.service.KeepAliveWorker
@@ -25,9 +26,12 @@ import com.ccc.smsalarm.ui.screens.SetupGuideScreen
 import com.ccc.smsalarm.ui.theme.SmsAlarmTheme
 import com.ccc.smsalarm.ui.viewmodel.MainViewModel
 import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+
+    @Inject lateinit var settingsRepository: SettingsRepository
 
     companion object {
         private const val PREFS_NAME = "sms_alarm_prefs"
@@ -37,12 +41,12 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Start persistent monitoring service
-        val monitorIntent = Intent(this, MonitorService::class.java)
-        startForegroundService(monitorIntent)
-
-        // Schedule WorkManager periodic keep-alive check
-        KeepAliveWorker.schedule(this)
+        // Start monitoring only if enabled
+        if (settingsRepository.isMonitoringEnabledSync()) {
+            val monitorIntent = Intent(this, MonitorService::class.java)
+            startForegroundService(monitorIntent)
+            KeepAliveWorker.schedule(this)
+        }
 
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val setupDone = prefs.getBoolean(KEY_SETUP_DONE, false)
@@ -66,6 +70,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun MainContent() {
     val viewModel: MainViewModel = hiltViewModel()
+    val context = LocalContext.current
     val smsList by viewModel.smsList.collectAsState()
     val rules by viewModel.rules.collectAsState()
     val settings by viewModel.settings.collectAsState()
@@ -80,6 +85,20 @@ private fun MainContent() {
             onEditRule = { rule, keywords, mode -> viewModel.updateRule(rule, keywords, mode) },
             onDeleteRule = { viewModel.deleteRule(it) },
             onToggleRule = { viewModel.toggleRule(it) },
+            onMonitoringChange = { enabled ->
+                viewModel.updateMonitoring(enabled)
+                if (enabled) {
+                    val intent = Intent(context, MonitorService::class.java)
+                    context.startForegroundService(intent)
+                    KeepAliveWorker.schedule(context)
+                } else {
+                    val intent = Intent(context, MonitorService::class.java).apply {
+                        action = MonitorService.ACTION_STOP
+                    }
+                    context.startService(intent)
+                    KeepAliveWorker.cancel(context)
+                }
+            },
             onVolumeChange = { viewModel.updateVolume(it) },
             onVibrationChange = { viewModel.updateVibration(it) },
             onFlashlightChange = { viewModel.updateFlashlight(it) }

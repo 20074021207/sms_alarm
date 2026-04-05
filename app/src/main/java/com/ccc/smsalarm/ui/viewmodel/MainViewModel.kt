@@ -65,4 +65,8 @@ class MainViewModel @Inject constructor(
     fun updateFlashlight(enabled: Boolean) {
         viewModelScope.launch { settingsRepository.updateFlashlight(enabled) }
     }
+
+    fun updateMonitoring(enabled: Boolean) {
+        viewModelScope.launch { settingsRepository.updateMonitoring(enabled) }
+    }
 }

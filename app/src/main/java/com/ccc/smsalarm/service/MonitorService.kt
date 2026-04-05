@@ -10,9 +10,17 @@ import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.emptyPreferences
 import com.ccc.smsalarm.MainActivity
 import com.ccc.smsalarm.R
+import com.ccc.smsalarm.data.repository.dataStore
 import com.ccc.smsalarm.receiver.RestartReceiver
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.runBlocking
+import java.io.IOException
 
 class MonitorService : Service() {
 
@@ -95,6 +103,16 @@ class MonitorService : Service() {
         if (intent?.action == ACTION_STOP) {
             explicitlyStopped = true
             cancelWatchdog(this)
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
+        // If monitoring is disabled (e.g. system restarted a START_STICKY service), stop immediately
+        if (!isMonitoringEnabled()) {
+            Log.d(TAG, "Monitoring disabled — stopping service")
+            explicitlyStopped = true
+            stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
             return START_NOT_STICKY
         }
@@ -118,17 +136,30 @@ class MonitorService : Service() {
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         Log.w(TAG, "Task removed — scheduling restart")
-        scheduleRestart(this, RESTART_DELAY_MS)
+        if (isMonitoringEnabled()) {
+            scheduleRestart(this, RESTART_DELAY_MS)
+        }
         super.onTaskRemoved(rootIntent)
     }
 
     override fun onDestroy() {
         Log.w(TAG, "onDestroy: explicitlyStopped=$explicitlyStopped")
-        if (!explicitlyStopped) {
+        if (!explicitlyStopped && isMonitoringEnabled()) {
             scheduleRestart(this, RESTART_DELAY_MS)
         }
         unregisterUserPresentReceiver()
         super.onDestroy()
+    }
+
+    private fun isMonitoringEnabled(): Boolean {
+        return runCatching {
+            runBlocking {
+                applicationContext.dataStore.data
+                    .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+                    .map { it[booleanPreferencesKey("monitoring_enabled")] ?: true }
+                    .first()
+            }
+        }.getOrDefault(true)
     }
 
     @Suppress("DEPRECATION")

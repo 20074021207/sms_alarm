@@ -26,6 +26,7 @@ fun ConfigTab(
     onEditRule: (rule: AlarmRuleEntity, keywords: List<String>, matchMode: MatchMode) -> Unit,
     onDeleteRule: (AlarmRuleEntity) -> Unit,
     onToggleRule: (AlarmRuleEntity) -> Unit,
+    onMonitoringChange: (Boolean) -> Unit,
     onVolumeChange: (Int) -> Unit,
     onVibrationChange: (Boolean) -> Unit,
     onFlashlightChange: (Boolean) -> Unit
@@ -60,27 +61,59 @@ fun ConfigTab(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // Rules section
+        // Master switch at the top
         item {
-            Row(
+            Card(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                colors = CardDefaults.cardColors(
+                    containerColor = if (settings.monitoringEnabled)
+                        MaterialTheme.colorScheme.primaryContainer
+                    else
+                        MaterialTheme.colorScheme.errorContainer
+                )
             ) {
-                Text("告警规则", style = MaterialTheme.typography.titleMedium)
-                IconButton(onClick = { showAddDialog = true }) {
-                    Icon(Icons.Default.Add, contentDescription = "添加规则")
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        if (settings.monitoringEnabled) "短信监控已开启" else "短信监控已关闭",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Switch(
+                        checked = settings.monitoringEnabled,
+                        onCheckedChange = onMonitoringChange
+                    )
                 }
             }
         }
 
-        items(rules, key = { it.id }) { rule ->
-            RuleItem(
-                rule = rule,
-                onToggle = { onToggleRule(rule) },
-                onDelete = { onDeleteRule(rule) },
-                onClick = { editingRule = rule }
-            )
+        // Rules section (only shown when monitoring is enabled)
+        if (settings.monitoringEnabled) {
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("告警规则", style = MaterialTheme.typography.titleMedium)
+                    IconButton(onClick = { showAddDialog = true }) {
+                        Icon(Icons.Default.Add, contentDescription = "添加规则")
+                    }
+                }
+            }
+
+            items(rules, key = { it.id }) { rule ->
+                RuleItem(
+                    rule = rule,
+                    onToggle = { onToggleRule(rule) },
+                    onDelete = { onDeleteRule(rule) },
+                    onClick = { editingRule = rule }
+                )
+            }
         }
 
         // Settings section
