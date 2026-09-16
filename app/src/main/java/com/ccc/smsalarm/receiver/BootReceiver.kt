@@ -3,9 +3,16 @@ package com.ccc.smsalarm.receiver
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.os.Build
 import android.util.Log
+import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.emptyPreferences
+import com.ccc.smsalarm.data.repository.dataStore
 import com.ccc.smsalarm.service.MonitorService
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.runBlocking
+import java.io.IOException
 
 class BootReceiver : BroadcastReceiver() {
 
@@ -26,16 +33,23 @@ class BootReceiver : BroadcastReceiver() {
             action == Intent.ACTION_POWER_DISCONNECTED ||
             action == Intent.ACTION_MY_PACKAGE_REPLACED
         ) {
-            try {
-                val serviceIntent = Intent(context, MonitorService::class.java)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    context.startForegroundService(serviceIntent)
-                } else {
-                    context.startService(serviceIntent)
+            // Check the master switch first: starting the service while
+            // monitoring is disabled would just flash a notification and stop.
+            val enabled = runCatching {
+                runBlocking {
+                    context.dataStore.data
+                        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+                        .map { it[booleanPreferencesKey("monitoring_enabled")] ?: true }
+                        .first()
                 }
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to start MonitorService", e)
+            }.getOrDefault(true)
+
+            if (!enabled) {
+                Log.d(TAG, "Monitoring disabled — skipping start")
+                return
             }
+
+            MonitorService.startMonitorService(context)
         }
     }
 }

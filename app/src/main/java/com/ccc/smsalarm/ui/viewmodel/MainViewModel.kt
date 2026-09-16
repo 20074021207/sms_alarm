@@ -42,6 +42,12 @@ class MainViewModel @Inject constructor(
         }
     }
 
+    fun deleteSmsByIds(ids: List<Long>) {
+        viewModelScope.launch {
+            matchedSmsRepository.deleteByIds(ids)
+        }
+    }
+
     fun toggleRule(rule: AlarmRuleEntity) {
         viewModelScope.launch {
             alarmRuleRepository.updateRule(rule.copy(enabled = !rule.enabled))

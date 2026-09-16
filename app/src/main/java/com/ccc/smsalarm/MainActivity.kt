@@ -41,13 +41,6 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Start monitoring only if enabled
-        if (settingsRepository.isMonitoringEnabledSync()) {
-            val monitorIntent = Intent(this, MonitorService::class.java)
-            startForegroundService(monitorIntent)
-            KeepAliveWorker.schedule(this)
-        }
-
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val setupDone = prefs.getBoolean(KEY_SETUP_DONE, false)
 
@@ -63,6 +56,17 @@ class MainActivity : ComponentActivity() {
                     MainContent()
                 }
             }
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        // Self-heal: every time the app comes to the foreground, make sure the
+        // monitor is alive — the service may have been killed while we were away.
+        // Starting from a visible activity is never restricted by the system.
+        if (settingsRepository.isMonitoringEnabledSync()) {
+            startForegroundService(Intent(this, MonitorService::class.java))
+            KeepAliveWorker.schedule(this)
         }
     }
 }
@@ -101,7 +105,8 @@ private fun MainContent() {
             },
             onVolumeChange = { viewModel.updateVolume(it) },
             onVibrationChange = { viewModel.updateVibration(it) },
-            onFlashlightChange = { viewModel.updateFlashlight(it) }
+            onFlashlightChange = { viewModel.updateFlashlight(it) },
+            onDeleteSmsSelected = { viewModel.deleteSmsByIds(it) }
         )
 
         // Stop alarm dialog overlay

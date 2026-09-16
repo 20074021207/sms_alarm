@@ -1,8 +1,13 @@
 package com.ccc.smsalarm.ui.screens
 
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -18,84 +23,219 @@ import java.util.*
 
 @Composable
 fun SmsListTab(
-    smsList: List<MatchedSmsEntity>
+    smsList: List<MatchedSmsEntity>,
+    onDeleteSelected: (List<Long>) -> Unit
 ) {
-    if (smsList.isEmpty()) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = "暂无告警短信",
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+    var selectionMode by remember { mutableStateOf(false) }
+    var selectedIds by remember { mutableStateOf(emptySet<Long>()) }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        if (selectionMode) {
+            SelectionBar(
+                selectedCount = selectedIds.size,
+                totalCount = smsList.size,
+                allSelected = smsList.isNotEmpty() && selectedIds.size == smsList.size,
+                onSelectAll = {
+                    selectedIds =
+                        if (selectedIds.size == smsList.size) emptySet()
+                        else smsList.map { it.id }.toSet()
+                },
+                onDelete = { showDeleteConfirm = true },
+                deleteEnabled = selectedIds.isNotEmpty(),
+                onExit = {
+                    selectionMode = false
+                    selectedIds = emptySet()
+                }
             )
         }
-    } else {
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+
+        if (smsList.isEmpty()) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "暂无告警短信",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        } else {
+            if (!selectionMode) {
+                Text(
+                    text = "长按记录可多选删除",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 16.dp, top = 12.dp)
+                )
+            }
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(smsList, key = { it.id }) { sms ->
+                    val selected = sms.id in selectedIds
+                    SmsItem(
+                        sms = sms,
+                        selectionMode = selectionMode,
+                        selected = selected,
+                        onClick = {
+                            if (selectionMode) {
+                                selectedIds =
+                                    if (selected) selectedIds - sms.id
+                                    else selectedIds + sms.id
+                            }
+                        },
+                        onLongClick = {
+                            if (!selectionMode) {
+                                selectionMode = true
+                                selectedIds = setOf(sms.id)
+                            }
+                        }
+                    )
+                }
+            }
+        }
+    }
+
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text("删除告警记录") },
+            text = { Text("确定删除选中的 ${selectedIds.size} 条告警记录吗？删除后无法恢复。") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onDeleteSelected(selectedIds.toList())
+                        showDeleteConfirm = false
+                        selectionMode = false
+                        selectedIds = emptySet()
+                    }
+                ) {
+                    Text("删除", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) {
+                    Text("取消")
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun SelectionBar(
+    selectedCount: Int,
+    totalCount: Int,
+    allSelected: Boolean,
+    onSelectAll: () -> Unit,
+    onDelete: () -> Unit,
+    deleteEnabled: Boolean,
+    onExit: () -> Unit
+) {
+    Surface(color = MaterialTheme.colorScheme.secondaryContainer) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            items(smsList, key = { it.id }) { sms ->
-                SmsItem(sms)
+            IconButton(onClick = onExit) {
+                Icon(Icons.Default.Close, contentDescription = "取消选择")
+            }
+            Text(
+                text = "已选 $selectedCount 项",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.weight(1f)
+            )
+            TextButton(onClick = onSelectAll, enabled = totalCount > 0) {
+                Text(if (allSelected) "取消全选" else "全选")
+            }
+            IconButton(onClick = onDelete, enabled = deleteEnabled) {
+                Icon(
+                    Icons.Default.Delete,
+                    contentDescription = "删除选中项",
+                    tint = MaterialTheme.colorScheme.error
+                )
             }
         }
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun SmsItem(sms: MatchedSmsEntity) {
+private fun SmsItem(
+    sms: MatchedSmsEntity,
+    selectionMode: Boolean,
+    selected: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
+) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
+            containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer
+            else MaterialTheme.colorScheme.surfaceVariant
         )
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = sms.sender,
-                    style = MaterialTheme.typography.titleSmall
-                )
-                Text(
-                    text = formatTime(sms.receivedAt),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.Top
+        ) {
+            if (selectionMode) {
+                Checkbox(checked = selected, onCheckedChange = { onClick() })
+                Spacer(modifier = Modifier.width(4.dp))
             }
-            Spacer(modifier = Modifier.height(4.dp))
+            Column {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = sms.sender,
+                        style = MaterialTheme.typography.titleSmall
+                    )
+                    Text(
+                        text = formatTime(sms.receivedAt),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Spacer(modifier = Modifier.height(4.dp))
 
-            val annotatedBody = buildAnnotatedString {
-                var remaining = sms.body
-                val keywords = sms.matchedKeywords.sortedByDescending { it.length }
+                val annotatedBody = buildAnnotatedString {
+                    var remaining = sms.body
+                    val keywords = sms.matchedKeywords.sortedByDescending { it.length }
 
-                while (remaining.isNotEmpty()) {
-                    var earliestMatch: Pair<Int, String>? = null
-                    for (kw in keywords) {
-                        val idx = remaining.indexOf(kw, ignoreCase = true)
-                        if (idx >= 0) {
-                            if (earliestMatch == null || idx < earliestMatch.first) {
-                                earliestMatch = idx to kw
+                    while (remaining.isNotEmpty()) {
+                        var earliestMatch: Pair<Int, String>? = null
+                        for (kw in keywords) {
+                            val idx = remaining.indexOf(kw, ignoreCase = true)
+                            if (idx >= 0) {
+                                if (earliestMatch == null || idx < earliestMatch.first) {
+                                    earliestMatch = idx to kw
+                                }
                             }
                         }
+                        if (earliestMatch == null) {
+                            append(remaining)
+                            break
+                        }
+                        val (idx, kw) = earliestMatch
+                        append(remaining.substring(0, idx))
+                        withStyle(SpanStyle(background = HighlightYellow)) {
+                            append(remaining.substring(idx, idx + kw.length))
+                        }
+                        remaining = remaining.substring(idx + kw.length)
                     }
-                    if (earliestMatch == null) {
-                        append(remaining)
-                        break
-                    }
-                    val (idx, kw) = earliestMatch
-                    append(remaining.substring(0, idx))
-                    withStyle(SpanStyle(background = HighlightYellow)) {
-                        append(remaining.substring(idx, idx + kw.length))
-                    }
-                    remaining = remaining.substring(idx + kw.length)
                 }
+                Text(text = annotatedBody, style = MaterialTheme.typography.bodyMedium)
             }
-            Text(text = annotatedBody, style = MaterialTheme.typography.bodyMedium)
         }
     }
 }
