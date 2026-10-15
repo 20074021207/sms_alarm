@@ -28,6 +28,9 @@ class AlarmRuleRepository @Inject constructor(
     suspend fun matchSms(body: String): AlarmRuleEntity? {
         val rules = getEnabledRules()
         for (rule in rules) {
+            // An empty keyword list must never match: `all {}` returns true and
+            // would turn such a rule into "match everything".
+            if (rule.keywords.isEmpty()) continue
             val matched = when (rule.matchMode) {
                 MatchMode.ANY -> rule.keywords.any { body.contains(it, ignoreCase = true) }
                 MatchMode.ALL -> rule.keywords.all { body.contains(it, ignoreCase = true) }

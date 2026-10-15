@@ -22,5 +22,6 @@ class Converters {
     fun fromMatchMode(mode: MatchMode): String = mode.name
 
     @TypeConverter
-    fun toMatchMode(value: String): MatchMode = MatchMode.valueOf(value)
+    fun toMatchMode(value: String): MatchMode =
+        runCatching { MatchMode.valueOf(value) }.getOrDefault(MatchMode.ANY)
 }

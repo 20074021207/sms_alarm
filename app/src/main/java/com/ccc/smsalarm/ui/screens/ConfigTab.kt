@@ -2,9 +2,11 @@ package com.ccc.smsalarm.ui.screens
 
 import android.media.AudioManager
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
@@ -17,6 +19,7 @@ import androidx.compose.ui.unit.dp
 import com.ccc.smsalarm.data.db.entity.AlarmRuleEntity
 import com.ccc.smsalarm.data.model.AppSettings
 import com.ccc.smsalarm.data.model.MatchMode
+import com.ccc.smsalarm.util.Keywords
 
 @Composable
 fun ConfigTab(
@@ -35,7 +38,10 @@ fun ConfigTab(
     var editingRule by remember { mutableStateOf<AlarmRuleEntity?>(null) }
 
     if (showAddDialog) {
-        AddRuleDialog(
+        RuleDialog(
+            title = "添加规则",
+            initialKeywords = emptyList(),
+            initialMode = MatchMode.ANY,
             onDismiss = { showAddDialog = false },
             onConfirm = { keywords, mode ->
                 onAddRule(keywords, mode)
@@ -45,8 +51,10 @@ fun ConfigTab(
     }
 
     editingRule?.let { rule ->
-        EditRuleDialog(
-            rule = rule,
+        RuleDialog(
+            title = "编辑规则",
+            initialKeywords = rule.keywords,
+            initialMode = rule.matchMode,
             onDismiss = { editingRule = null },
             onConfirm = { keywords, mode ->
                 onEditRule(rule, keywords, mode)
@@ -91,9 +99,10 @@ fun ConfigTab(
             }
         }
 
-        // Rules section (only shown when monitoring is enabled)
-        if (settings.monitoringEnabled) {
-            item {
+        // Rules are always visible — hiding them when monitoring is off made
+        // users think their rules had been deleted.
+        item {
+            Column {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -104,16 +113,23 @@ fun ConfigTab(
                         Icon(Icons.Default.Add, contentDescription = "添加规则")
                     }
                 }
+                if (!settings.monitoringEnabled) {
+                    Text(
+                        "监控已关闭，规则暂停生效（不会丢失）",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
             }
+        }
 
-            items(rules, key = { it.id }) { rule ->
-                RuleItem(
-                    rule = rule,
-                    onToggle = { onToggleRule(rule) },
-                    onDelete = { onDeleteRule(rule) },
-                    onClick = { editingRule = rule }
-                )
-            }
+        items(rules, key = { it.id }) { rule ->
+            RuleItem(
+                rule = rule,
+                onToggle = { onToggleRule(rule) },
+                onDelete = { onDeleteRule(rule) },
+                onClick = { editingRule = rule }
+            )
         }
 
         // Settings section
@@ -128,13 +144,18 @@ fun ConfigTab(
             val context = LocalContext.current
             val audioManager = context.getSystemService(AudioManager::class.java)
             val maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_ALARM)
-            val currentVolume = if (settings.alarmVolume < 0) maxVolume else settings.alarmVolume
+            // Drag locally, persist once on release — writing DataStore on every
+            // frame of the slider hammered the disk.
+            var sliderValue by remember(settings.alarmVolume) {
+                mutableStateOf(if (settings.alarmVolume < 0) maxVolume else settings.alarmVolume)
+            }
 
             Column {
                 Text("音量", style = MaterialTheme.typography.bodyMedium)
                 Slider(
-                    value = currentVolume.toFloat(),
-                    onValueChange = { onVolumeChange(it.toInt()) },
+                    value = sliderValue.toFloat(),
+                    onValueChange = { sliderValue = it.toInt() },
+                    onValueChangeFinished = { onVolumeChange(sliderValue) },
                     valueRange = 0f..maxVolume.toFloat(),
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -198,7 +219,10 @@ private fun RuleItem(
                     .weight(1f)
                     .clickable(onClick = onClick)
             ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier.horizontalScroll(rememberScrollState())
+                ) {
                     rule.keywords.forEach { kw ->
                         AssistChip(
                             onClick = {},
@@ -222,16 +246,19 @@ private fun RuleItem(
 }
 
 @Composable
-private fun AddRuleDialog(
+private fun RuleDialog(
+    title: String,
+    initialKeywords: List<String>,
+    initialMode: MatchMode,
     onDismiss: () -> Unit,
     onConfirm: (keywords: List<String>, matchMode: MatchMode) -> Unit
 ) {
-    var keywordText by remember { mutableStateOf("") }
-    var matchMode by remember { mutableStateOf(MatchMode.ANY) }
+    var keywordText by remember(initialKeywords) { mutableStateOf(initialKeywords.joinToString(", ")) }
+    var matchMode by remember(initialMode) { mutableStateOf(initialMode) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("添加规则") },
+        title = { Text(title) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
@@ -270,81 +297,7 @@ private fun AddRuleDialog(
         confirmButton = {
             TextButton(
                 onClick = {
-                    val keywords = keywordText
-                        .split(",")
-                        .map { it.trim() }
-                        .filter { it.isNotEmpty() }
-                    if (keywords.isNotEmpty()) {
-                        onConfirm(keywords, matchMode)
-                    }
-                },
-                enabled = keywordText.trim().isNotEmpty()
-            ) {
-                Text("确认")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("取消")
-            }
-        }
-    )
-}
-
-@Composable
-private fun EditRuleDialog(
-    rule: AlarmRuleEntity,
-    onDismiss: () -> Unit,
-    onConfirm: (keywords: List<String>, matchMode: MatchMode) -> Unit
-) {
-    var keywordText by remember { mutableStateOf(rule.keywords.joinToString(", ")) }
-    var matchMode by remember { mutableStateOf(rule.matchMode) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("编辑规则") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    value = keywordText,
-                    onValueChange = { keywordText = it },
-                    label = { Text("关键词") },
-                    placeholder = { Text("多个关键词用逗号分隔") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = false,
-                    maxLines = 3
-                )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        RadioButton(
-                            selected = matchMode == MatchMode.ANY,
-                            onClick = { matchMode = MatchMode.ANY }
-                        )
-                        Text("任一匹配")
-                    }
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        RadioButton(
-                            selected = matchMode == MatchMode.ALL,
-                            onClick = { matchMode = MatchMode.ALL }
-                        )
-                        Text("全部匹配")
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    val keywords = keywordText
-                        .split(",")
-                        .map { it.trim() }
-                        .filter { it.isNotEmpty() }
+                    val keywords = Keywords.parse(keywordText)
                     if (keywords.isNotEmpty()) {
                         onConfirm(keywords, matchMode)
                     }

@@ -22,7 +22,12 @@ SMS Alarm is an Android app that triggers audio/vibration/flashlight alarms when
 ./gradlew assembleRelease
 ```
 
-No tests exist yet; `./gradlew test` runs an empty suite. No lint configuration is present. The project uses KSP (not kapt).
+No lint configuration is present. The project uses KSP (not kapt).
+
+```bash
+# Unit tests (keyword parsing, Room converters, rule matching)
+./gradlew testDebugUnitTest
+```
 
 ## Architecture
 
@@ -43,12 +48,12 @@ No tests exist yet; `./gradlew test` runs an empty suite. No lint configuration 
 **Package structure under `com.ccc.smsalarm`:**
 - `data/db/` — Room entities, DAOs, type converters, AppDatabase
 - `data/repository/` — Business logic + data access; `SettingsRepository` is the ONLY place that reads `monitoring_enabled` (background components use `AppEntryPoint`)
-- `data/model/` — AppSettings + MatchMode (AlarmRule/MatchedSms domain models are currently unused)
+- `data/model/` — AppSettings + MatchMode
 - `di/AppEntryPoint` — shared Hilt entry point for receivers/workers
 - `receiver/` — SmsReceiver, BootReceiver, RestartReceiver
 - `service/` — AlarmService, MonitorService, KeepAliveWorker, AlarmState
 - `ui/` — screens + viewmodel + theme
-- `util/` — AudioHelper, VibrationHelper, FlashlightHelper
+- `util/` — AudioHelper, VibrationHelper, FlashlightHelper, Keywords (separator-aware keyword parsing)
 
 ## Key Design Decisions & Constraints
 

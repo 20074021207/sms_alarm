@@ -14,7 +14,7 @@ class FlashlightHelper @Inject constructor(
 ) {
     private val cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
     private var flashJob: Job? = null
-    private var isOn = false
+    @Volatile private var isOn = false
 
     private val cameraId: String? by lazy {
         cameraManager.cameraIdList.firstOrNull { id ->

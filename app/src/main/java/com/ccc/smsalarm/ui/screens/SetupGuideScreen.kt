@@ -26,7 +26,6 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import com.ccc.smsalarm.ui.theme.SmsAlarmTheme
 
 @Composable
 fun SetupGuideScreen(onAllGranted: () -> Unit) {
@@ -83,11 +82,10 @@ fun SetupGuideScreen(onAllGranted: () -> Unit) {
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    SmsAlarmTheme {
-        Surface(
-            modifier = Modifier.fillMaxSize(),
-            color = MaterialTheme.colorScheme.background
-        ) {
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background
+    ) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -169,7 +167,6 @@ fun SetupGuideScreen(onAllGranted: () -> Unit) {
                 ) {
                     Text("已授权，继续")
                 }
-            }
         }
     }
 }

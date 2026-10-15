@@ -26,8 +26,8 @@ android {
         applicationId = "com.ccc.smsalarm"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.1.0"
     }
 
     signingConfigs {
@@ -98,4 +98,9 @@ dependencies {
 
     // Core
     implementation("androidx.core:core-ktx:1.15.0")
+
+    // Unit tests
+    testImplementation("junit:junit:4.13.2")
+    // Android's org.json is stubbed on the JVM — the real artifact is needed to test Converters
+    testImplementation("org.json:json:20240303")
 }
