@@ -1,0 +1,248 @@
+package com.ccc.smsalarm.service
+
+import android.app.*
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.content.pm.ServiceInfo
+import android.os.Build
+import android.os.IBinder
+import android.util.Log
+import androidx.core.app.NotificationCompat
+import com.ccc.smsalarm.MainActivity
+import com.ccc.smsalarm.R
+import com.ccc.smsalarm.data.repository.SettingsRepository
+import com.ccc.smsalarm.receiver.RestartReceiver
+import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
+
+@AndroidEntryPoint
+class MonitorService : Service() {
+
+    companion object {
+        private const val TAG = "MonitorService"
+        const val CHANNEL_ID = "sms_monitor_silent"
+        const val NOTIFICATION_ID = 2
+        const val ACTION_STOP = "com.ccc.smsalarm.ACTION_STOP_MONITOR"
+        private const val RESTART_REQUEST_CODE = 1001
+        private const val WATCHDOG_REQUEST_CODE = 1002
+        private const val RESTART_DELAY_MS = 1000L
+        private const val WATCHDOG_INTERVAL_MS = 5 * 60_000L // 5 minutes
+
+        fun scheduleRestart(context: Context, delayMs: Long = RESTART_DELAY_MS) {
+            setKeepAliveAlarm(
+                context, RESTART_REQUEST_CODE,
+                System.currentTimeMillis() + delayMs, null
+            ) { Log.d(TAG, "Restart scheduled in ${delayMs}ms") }
+        }
+
+        fun scheduleWatchdog(context: Context) {
+            setKeepAliveAlarm(
+                context, WATCHDOG_REQUEST_CODE,
+                System.currentTimeMillis() + WATCHDOG_INTERVAL_MS,
+                "com.ccc.smsalarm.ACTION_WATCHDOG"
+            ) { Log.d(TAG, "Watchdog scheduled in ${WATCHDOG_INTERVAL_MS}ms") }
+        }
+
+        fun cancelWatchdog(context: Context) {
+            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            val intent = Intent(context, RestartReceiver::class.java).apply {
+                action = "com.ccc.smsalarm.ACTION_WATCHDOG"
+            }
+            val pendingIntent = PendingIntent.getBroadcast(
+                context, WATCHDOG_REQUEST_CODE, intent,
+                PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
+            )
+            pendingIntent?.let { alarmManager.cancel(it) }
+        }
+
+        /**
+         * Exact alarms (when permitted) both fire more punctually and are on the
+         * Android 12+ exemption list for starting a foreground service from the
+         * background — the plain allow-while-idle variant is not.
+         */
+        private fun setKeepAliveAlarm(
+            context: Context,
+            requestCode: Int,
+            triggerAtMillis: Long,
+            action: String?,
+            onDone: () -> Unit
+        ) {
+            try {
+                val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+                val intent = Intent(context, RestartReceiver::class.java).apply { this.action = action }
+                val pendingIntent = PendingIntent.getBroadcast(
+                    context, requestCode, intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+                val canExact = Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
+                    alarmManager.canScheduleExactAlarms()
+                if (canExact) {
+                    alarmManager.setExactAndAllowWhileIdle(
+                        AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent
+                    )
+                } else {
+                    alarmManager.setAndAllowWhileIdle(
+                        AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent
+                    )
+                }
+                onDone()
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to schedule keep-alive alarm", e)
+            }
+        }
+    }
+
+    @Inject lateinit var settingsRepository: SettingsRepository
+
+    private var explicitlyStopped = false
+    private var userPresentReceiver: BroadcastReceiver? = null
+
+    override fun onCreate() {
+        super.onCreate()
+        createNotificationChannel()
+        registerUserPresentReceiver()
+        Log.d(TAG, "MonitorService created")
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        Log.d(TAG, "onStartCommand: action=${intent?.action}")
+
+        if (intent?.action == ACTION_STOP) {
+            explicitlyStopped = true
+            cancelWatchdog(this)
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
+        // If monitoring is disabled (e.g. system restarted a START_STICKY service), stop immediately
+        if (!settingsRepository.isMonitoringEnabledSync()) {
+            Log.d(TAG, "Monitoring disabled — stopping service")
+            explicitlyStopped = true
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
+        explicitlyStopped = false
+
+        val notification = buildNotification()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(
+                NOTIFICATION_ID, notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+            )
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
+        }
+
+        scheduleWatchdog(this)
+
+        return START_STICKY
+    }
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        Log.w(TAG, "Task removed — scheduling restart")
+        if (settingsRepository.isMonitoringEnabledSync()) {
+            scheduleRestart(this, RESTART_DELAY_MS)
+        }
+        super.onTaskRemoved(rootIntent)
+    }
+
+    override fun onDestroy() {
+        Log.w(TAG, "onDestroy: explicitlyStopped=$explicitlyStopped")
+        if (!explicitlyStopped && settingsRepository.isMonitoringEnabledSync()) {
+            scheduleRestart(this, RESTART_DELAY_MS)
+        }
+        unregisterUserPresentReceiver()
+        super.onDestroy()
+    }
+
+    private fun buildNotification(): Notification {
+        val contentIntent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val contentPendingIntent = PendingIntent.getActivity(
+            this, 0, contentIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val stopIntent = Intent(this, MonitorService::class.java).apply {
+            action = ACTION_STOP
+        }
+        val stopPendingIntent = PendingIntent.getService(
+            this, 0, stopIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        return NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle(getString(R.string.monitor_running))
+            .setContentText(getString(R.string.monitor_running_desc))
+            .setContentIntent(contentPendingIntent)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setTicker(getString(R.string.monitor_running))
+            .addAction(
+                android.R.drawable.ic_menu_close_clear_cancel,
+                getString(R.string.stop_monitor),
+                stopPendingIntent
+            )
+            .build()
+    }
+
+    private fun createNotificationChannel() {
+        val channel = NotificationChannel(
+            CHANNEL_ID,
+            getString(R.string.monitor_channel_name),
+            NotificationManager.IMPORTANCE_LOW
+        ).apply {
+            description = "短信监控服务状态"
+            lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+            setShowBadge(false)
+        }
+        val manager = getSystemService(NotificationManager::class.java)
+        manager.createNotificationChannel(channel)
+    }
+
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    /**
+     * Listen for USER_PRESENT (user unlocked screen) as a safety net
+     * to refresh the foreground notification.
+     */
+    private fun registerUserPresentReceiver() {
+        if (userPresentReceiver != null) return
+        userPresentReceiver = object : BroadcastReceiver() {
+            override fun onReceive(ctx: Context, intent: Intent) {
+                if (intent.action == Intent.ACTION_USER_PRESENT) {
+                    Log.d(TAG, "USER_PRESENT — refreshing notification")
+                    try {
+                        val notification = buildNotification()
+                        val nm = getSystemService(NotificationManager::class.java)
+                        nm.notify(NOTIFICATION_ID, notification)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to refresh notification", e)
+                    }
+                }
+            }
+        }
+        val filter = IntentFilter(Intent.ACTION_USER_PRESENT)
+        registerReceiver(userPresentReceiver, filter)
+        Log.d(TAG, "UserPresentReceiver registered")
+    }
+
+    private fun unregisterUserPresentReceiver() {
+        userPresentReceiver?.let {
+            try {
+                unregisterReceiver(it)
+            } catch (_: Exception) {}
+            userPresentReceiver = null
+        }
+    }
+}

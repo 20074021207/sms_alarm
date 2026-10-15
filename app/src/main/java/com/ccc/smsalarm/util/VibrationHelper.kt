@@ -1,7 +1,9 @@
 package com.ccc.smsalarm.util
 
 import android.content.Context
+import android.media.AudioAttributes
 import android.os.Build
+import android.os.VibrationAttributes
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
@@ -29,7 +31,22 @@ class VibrationHelper @Inject constructor(
         val timings = longArrayOf(0, 500, 500)
         val amplitudes = intArrayOf(0, 255, 0)
         val effect = VibrationEffect.createWaveform(timings, amplitudes, 0)
-        vibrator.vibrate(effect)
+        // USAGE_ALARM keeps the pattern vibrating under DND, matching the alarm sound.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            vibrator.vibrate(
+                effect,
+                VibrationAttributes.Builder()
+                    .setUsage(VibrationAttributes.USAGE_ALARM)
+                    .build()
+            )
+        } else {
+            vibrator.vibrate(
+                effect,
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_ALARM)
+                    .build()
+            )
+        }
     }
 
     fun stopVibration() {

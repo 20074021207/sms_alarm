@@ -1,12 +1,14 @@
 package com.ccc.smsalarm.service
 
 import android.app.*
+import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import com.ccc.smsalarm.MainActivity
 import com.ccc.smsalarm.R
 import com.ccc.smsalarm.data.repository.SettingsRepository
@@ -25,9 +27,50 @@ class AlarmService : Service() {
     companion object {
         const val CHANNEL_ID = "sms_alarm_channel"
         const val NOTIFICATION_ID = 1
+        const val FALLBACK_NOTIFICATION_ID = 3
         const val ACTION_STOP = "com.ccc.smsalarm.ACTION_STOP"
         const val EXTRA_SENDER = "extra_sender"
         const val EXTRA_BODY = "extra_body"
+        private const val ALARM_WAKELOCK_TIMEOUT_MS = 10 * 60 * 1000L
+
+        /**
+         * Last-resort alarm surface when the foreground service cannot start
+         * (e.g. Android 12+ background FGS restrictions after MonitorService died).
+         */
+        fun postFallbackNotification(context: Context, sender: String, body: String) {
+            try {
+                val nm = context.getSystemService(NotificationManager::class.java)
+                nm.createNotificationChannel(
+                    NotificationChannel(
+                        CHANNEL_ID,
+                        context.getString(R.string.channel_name),
+                        NotificationManager.IMPORTANCE_HIGH
+                    )
+                )
+                val fullScreenIntent = Intent(context, AlarmActivity::class.java).apply {
+                    putExtra(EXTRA_SENDER, sender)
+                    putExtra(EXTRA_BODY, body)
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                }
+                val pendingIntent = PendingIntent.getActivity(
+                    context, 0, fullScreenIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+                val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+                    .setSmallIcon(android.R.drawable.ic_dialog_alert)
+                    .setContentTitle(context.getString(R.string.alarm_triggered))
+                    .setContentText(context.getString(R.string.keyword_detected))
+                    .setContentIntent(pendingIntent)
+                    .setFullScreenIntent(pendingIntent, true)
+                    .setPriority(NotificationCompat.PRIORITY_MAX)
+                    .setCategory(NotificationCompat.CATEGORY_ALARM)
+                    .setAutoCancel(true)
+                    .build()
+                NotificationManagerCompat.from(context).notify(FALLBACK_NOTIFICATION_ID, notification)
+            } catch (_: Exception) {
+                // Nothing more we can do from this context.
+            }
+        }
     }
 
     @Inject lateinit var audioHelper: AudioHelper
@@ -37,9 +80,7 @@ class AlarmService : Service() {
 
     private var wakeLock: PowerManager.WakeLock? = null
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    private var currentVolume = -1
-    private var enableVibration = true
-    private var enableFlashlight = true
+    private var effectsJob: Job? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -55,22 +96,7 @@ class AlarmService : Service() {
         val sender = intent?.getStringExtra(EXTRA_SENDER) ?: ""
         val body = intent?.getStringExtra(EXTRA_BODY) ?: ""
 
-        // Load settings synchronously
-        runBlocking {
-            val settings = settingsRepository.settings.first()
-            currentVolume = settings.alarmVolume
-            enableVibration = settings.enableVibration
-            enableFlashlight = settings.enableFlashlight
-        }
-
-        // Acquire WakeLock
-        val powerManager = getSystemService(POWER_SERVICE) as PowerManager
-        wakeLock = powerManager.newWakeLock(
-            PowerManager.PARTIAL_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP,
-            "SmsAlarm::AlarmWakeLock"
-        ).apply { acquire(10 * 60 * 1000L) }
-
-        // Start foreground with notification
+        // Must reach startForeground immediately; everything slow goes to the coroutine below.
         val notification = buildNotification(sender, body)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             startForeground(
@@ -81,10 +107,22 @@ class AlarmService : Service() {
             startForeground(NOTIFICATION_ID, notification)
         }
 
-        // Start alarm effects
-        audioHelper.startAlarm(currentVolume)
-        if (enableVibration) vibrationHelper.startVibration()
-        if (enableFlashlight) flashlightHelper.startFlashlight(serviceScope)
+        acquireWakeLock()
+        AlarmState.trigger(sender, body)
+
+        // A second matching SMS re-enters here on the same instance: restart effects cleanly.
+        effectsJob?.cancel()
+        effectsJob = null
+        stopEffects()
+        effectsJob = serviceScope.launch {
+            // Settings come from DataStore on disk — never block the main thread for them.
+            val settings = settingsRepository.settings.first()
+            // Audio failure (no default alarm ringtone, decoder error…) must not
+            // take down vibration and flashlight with it.
+            audioHelper.startAlarm(settings.alarmVolume)
+            if (settings.enableVibration) vibrationHelper.startVibration()
+            if (settings.enableFlashlight) flashlightHelper.startFlashlight(serviceScope)
+        }
 
         return START_NOT_STICKY
     }
@@ -108,10 +146,20 @@ class AlarmService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        // Content intent to open MainActivity with alarm dialog
+        val contentIntent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val contentPendingIntent = PendingIntent.getActivity(
+            this, 1, contentIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_dialog_alert)
             .setContentTitle(getString(R.string.alarm_triggered))
             .setContentText(getString(R.string.keyword_detected))
+            .setContentIntent(contentPendingIntent)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setFullScreenIntent(fullScreenPendingIntent, true)
@@ -133,21 +181,42 @@ class AlarmService : Service() {
         manager.createNotificationChannel(channel)
     }
 
-    private fun stopAlarm() {
+    private fun acquireWakeLock() {
+        // Re-entrant alarm must not leak the previous lock.
+        releaseWakeLock()
+        val powerManager = getSystemService(POWER_SERVICE) as PowerManager
+        wakeLock = powerManager.newWakeLock(
+            PowerManager.PARTIAL_WAKE_LOCK,
+            "SmsAlarm::AlarmWakeLock"
+        ).apply { acquire(ALARM_WAKELOCK_TIMEOUT_MS) }
+    }
+
+    private fun releaseWakeLock() {
+        wakeLock?.let { if (it.isHeld) it.release() }
+        wakeLock = null
+    }
+
+    private fun stopEffects() {
         audioHelper.stopAlarm()
         vibrationHelper.stopVibration()
         flashlightHelper.stopFlashlight()
-        wakeLock?.let {
-            if (it.isHeld) it.release()
-        }
-        wakeLock = null
-        serviceScope.cancel()
+    }
+
+    private fun stopAlarm() {
+        effectsJob?.cancel()
+        effectsJob = null
+        stopEffects()
+        releaseWakeLock()
+        AlarmState.clear()
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
 
     override fun onDestroy() {
         stopAlarm()
+        // Only cancelled on destroy: a cancelled scope would silently kill the
+        // flashlight of the next alarm arriving on this same instance.
+        serviceScope.cancel()
         super.onDestroy()
     }
 
