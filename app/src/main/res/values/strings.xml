@@ -19,4 +19,8 @@
     <string name="flashlight">闪光灯</string>
     <string name="alarm_triggered">短信告警触发</string>
     <string name="keyword_detected">检测到关键词</string>
+    <string name="monitor_running">短信监控运行中</string>
+    <string name="monitor_running_desc">正在后台监控短信关键词</string>
+    <string name="monitor_channel_name">监控服务</string>
+    <string name="stop_monitor">停止监控</string>
 </resources>

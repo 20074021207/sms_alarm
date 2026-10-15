@@ -1,12 +1,17 @@
 package com.ccc.smsalarm.ui.screens
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
@@ -16,29 +21,132 @@ import com.ccc.smsalarm.ui.theme.HighlightYellow
 import java.text.SimpleDateFormat
 import java.util.*
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SmsListTab(
-    smsList: List<MatchedSmsEntity>
+    smsList: List<MatchedSmsEntity>,
+    onDeleteSms: (Long) -> Unit,
+    onDeleteAllSms: () -> Unit
 ) {
-    if (smsList.isEmpty()) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = "暂无告警短信",
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+    var showClearAllDialog by remember { mutableStateOf(false) }
+
+    if (showClearAllDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearAllDialog = false },
+            title = { Text("清除全部") },
+            text = { Text("确定要删除所有告警记录吗？此操作不可撤销。") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onDeleteAllSms()
+                        showClearAllDialog = false
+                    },
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    Text("删除")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearAllDialog = false }) {
+                    Text("取消")
+                }
+            }
+        )
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        if (smsList.isNotEmpty()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.End
+            ) {
+                TextButton(
+                    onClick = { showClearAllDialog = true },
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    Icon(
+                        Icons.Default.DeleteSweep,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("清除全部")
+                }
+            }
         }
-    } else {
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            items(smsList, key = { it.id }) { sms ->
-                SmsItem(sms)
+
+        if (smsList.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .weight(1f),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "暂无告警短信",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .weight(1f),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(smsList, key = { it.id }) { sms ->
+                    val dismissState = rememberSwipeToDismissBoxState(
+                        confirmValueChange = {
+                            if (it == SwipeToDismissBoxValue.EndToStart) {
+                                onDeleteSms(sms.id)
+                                true
+                            } else {
+                                false
+                            }
+                        },
+                        positionalThreshold = { totalDistance -> totalDistance * 0.4f }
+                    )
+
+                    SwipeToDismissBox(
+                        state = dismissState,
+                        backgroundContent = {
+                            val color by animateColorAsState(
+                                when (dismissState.targetValue) {
+                                    SwipeToDismissBoxValue.EndToStart -> MaterialTheme.colorScheme.error
+                                    else -> Color.Transparent
+                                },
+                                label = "bg"
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(vertical = 2.dp)
+                                    .let { m ->
+                                        if (color != Color.Transparent) m.background(color, MaterialTheme.shapes.medium)
+                                        else m
+                                    },
+                                contentAlignment = Alignment.CenterEnd
+                            ) {
+                                Text(
+                                    "删除",
+                                    color = MaterialTheme.colorScheme.onError,
+                                    modifier = Modifier.padding(end = 20.dp)
+                                )
+                            }
+                        },
+                        enableDismissFromStartToEnd = false
+                    ) {
+                        SmsItem(sms)
+                    }
+                }
             }
         }
     }

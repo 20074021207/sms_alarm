@@ -12,6 +12,9 @@ interface MatchedSmsDao {
     @Insert
     suspend fun insert(sms: MatchedSmsEntity): Long
 
+    @Query("DELETE FROM matched_sms WHERE id = :id")
+    suspend fun deleteById(id: Long)
+
     @Query("DELETE FROM matched_sms")
     suspend fun deleteAll()
 }

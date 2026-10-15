@@ -48,6 +48,12 @@ class MainViewModel @Inject constructor(
         }
     }
 
+    fun updateRule(rule: AlarmRuleEntity, keywords: List<String>, matchMode: MatchMode) {
+        viewModelScope.launch {
+            alarmRuleRepository.updateRule(rule.copy(keywords = keywords, matchMode = matchMode))
+        }
+    }
+
     fun updateVolume(volume: Int) {
         viewModelScope.launch { settingsRepository.updateVolume(volume) }
     }
@@ -58,5 +64,17 @@ class MainViewModel @Inject constructor(
 
     fun updateFlashlight(enabled: Boolean) {
         viewModelScope.launch { settingsRepository.updateFlashlight(enabled) }
+    }
+
+    fun updateMonitoring(enabled: Boolean) {
+        viewModelScope.launch { settingsRepository.updateMonitoring(enabled) }
+    }
+
+    fun deleteSms(id: Long) {
+        viewModelScope.launch { matchedSmsRepository.deleteSms(id) }
+    }
+
+    fun deleteAllSms() {
+        viewModelScope.launch { matchedSmsRepository.deleteAll() }
     }
 }
