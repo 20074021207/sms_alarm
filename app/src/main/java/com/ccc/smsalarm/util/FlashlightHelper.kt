@@ -16,11 +16,16 @@ class FlashlightHelper @Inject constructor(
     private var flashJob: Job? = null
     @Volatile private var isOn = false
 
+    // Camera access can throw when the camera service is unavailable (device
+    // policy, ROM quirks) — the lazy must return null instead of crashing the
+    // alarm process.
     private val cameraId: String? by lazy {
-        cameraManager.cameraIdList.firstOrNull { id ->
-            cameraManager.getCameraCharacteristics(id)
-                .get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true
-        }
+        runCatching {
+            cameraManager.cameraIdList.firstOrNull { id ->
+                cameraManager.getCameraCharacteristics(id)
+                    .get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true
+            }
+        }.getOrNull()
     }
 
     fun startFlashlight(scope: CoroutineScope) {

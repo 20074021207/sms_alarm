@@ -7,6 +7,7 @@ import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.ccc.smsalarm.MainActivity
@@ -25,6 +26,7 @@ import javax.inject.Inject
 class AlarmService : Service() {
 
     companion object {
+        private const val TAG = "AlarmService"
         const val CHANNEL_ID = "sms_alarm_channel"
         const val NOTIFICATION_ID = 1
         const val FALLBACK_NOTIFICATION_ID = 3
@@ -79,7 +81,14 @@ class AlarmService : Service() {
     @Inject lateinit var settingsRepository: SettingsRepository
 
     private var wakeLock: PowerManager.WakeLock? = null
-    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    // Without a handler, an exception escaping any effect (camera service down,
+    // DataStore corrupted, …) reaches the default handler and kills the process —
+    // taking the just-started alarm notification and sound down with it.
+    private val serviceScope = CoroutineScope(
+        SupervisorJob() + Dispatchers.Default +
+                CoroutineExceptionHandler { _, e -> Log.e(TAG, "Alarm effect failed", e) }
+    )
     private var effectsJob: Job? = null
 
     override fun onCreate() {
@@ -98,13 +107,28 @@ class AlarmService : Service() {
 
         // Must reach startForeground immediately; everything slow goes to the coroutine below.
         val notification = buildNotification(sender, body)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(
-                NOTIFICATION_ID, notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
-            )
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
+        // SMS_RECEIVED is not on the Android 12+ background-FGS-start exemption list,
+        // and some OEMs deny the start even with the battery-optimization exemption.
+        // startForeground() then throws INSIDE the service, where SmsReceiver's
+        // try/catch cannot see it — so degrade here: fallback notification, never crash.
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                startForeground(
+                    NOTIFICATION_ID, notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "startForeground rejected — using fallback notification", e)
+            postFallbackNotification(this, sender, body)
+            AlarmState.trigger(sender, body)
+            // Stop immediately: the system expects startForeground() to have run
+            // after startForegroundService(); a prompt stop avoids the follow-up
+            // "did not then call startForeground" crash.
+            stopSelf()
+            return START_NOT_STICKY
         }
 
         acquireWakeLock()
@@ -117,11 +141,18 @@ class AlarmService : Service() {
         effectsJob = serviceScope.launch {
             // Settings come from DataStore on disk — never block the main thread for them.
             val settings = settingsRepository.settings.first()
-            // Audio failure (no default alarm ringtone, decoder error…) must not
-            // take down vibration and flashlight with it.
-            audioHelper.startAlarm(settings.alarmVolume)
-            if (settings.enableVibration) vibrationHelper.startVibration()
-            if (settings.enableFlashlight) flashlightHelper.startFlashlight(serviceScope)
+            // Each effect stands on its own: one ROM-specific failure (ringtone
+            // missing, vibrator busy, camera service down) must not silence the rest.
+            runCatching { audioHelper.startAlarm(settings.alarmVolume) }
+                .onFailure { Log.e(TAG, "Alarm sound failed", it) }
+            if (settings.enableVibration) {
+                runCatching { vibrationHelper.startVibration() }
+                    .onFailure { Log.e(TAG, "Vibration failed", it) }
+            }
+            if (settings.enableFlashlight) {
+                runCatching { flashlightHelper.startFlashlight(serviceScope) }
+                    .onFailure { Log.e(TAG, "Flashlight failed", it) }
+            }
         }
 
         return START_NOT_STICKY

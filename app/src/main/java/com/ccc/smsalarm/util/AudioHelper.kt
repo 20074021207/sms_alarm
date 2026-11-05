@@ -36,12 +36,14 @@ class AudioHelper @Inject constructor(
             return false
         }
 
-        // The system-wide alarm volume is only raised while the alarm runs;
-        // stopAlarm() puts the user's original value back.
-        previousAlarmVolume = audioManager.getStreamVolume(AudioManager.STREAM_ALARM)
-        audioManager.setStreamVolume(AudioManager.STREAM_ALARM, targetVolume, 0)
-
         return try {
+            // The system-wide alarm volume is only raised while the alarm runs;
+            // stopAlarm() puts the user's original value back. Inside the try:
+            // some ROMs throw from setStreamVolume, which must not take down
+            // vibration and flashlight running after this.
+            previousAlarmVolume = audioManager.getStreamVolume(AudioManager.STREAM_ALARM)
+            audioManager.setStreamVolume(AudioManager.STREAM_ALARM, targetVolume, 0)
+
             mediaPlayer = MediaPlayer().apply {
                 setAudioAttributes(
                     AudioAttributes.Builder()
