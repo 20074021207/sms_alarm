@@ -5,6 +5,7 @@ build/
 local.properties
 captures/
 .claude/
+*.iml
 *.jks
 *.keystore
 keystore.properties

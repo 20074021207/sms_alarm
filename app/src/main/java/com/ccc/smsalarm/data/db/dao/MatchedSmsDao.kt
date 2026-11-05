@@ -17,4 +17,7 @@ interface MatchedSmsDao {
 
     @Query("DELETE FROM matched_sms")
     suspend fun deleteAll()
+
+    @Query("DELETE FROM matched_sms WHERE id IN (:ids)")
+    suspend fun deleteByIds(ids: List<Long>)
 }

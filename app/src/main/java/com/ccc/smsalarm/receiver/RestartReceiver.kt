@@ -26,14 +26,10 @@ class RestartReceiver : BroadcastReceiver() {
             return
         }
 
-        try {
-            val serviceIntent = Intent(context, MonitorService::class.java)
-            context.startForegroundService(serviceIntent)
-        } catch (e: Exception) {
-            // e.g. Android 12+ background FGS restriction when nothing keeps us exempt.
-            // Reschedule so the keep-alive chain never dies instead of silently ending.
-            Log.e(TAG, "Failed to start MonitorService — rescheduling watchdog", e)
-            MonitorService.scheduleWatchdog(context)
-        }
+        // Reschedule the watchdog first so the keep-alive chain continues even
+        // if the service start below fails; then start via the unified entry
+        // (direct start, PendingIntent fallback when Android 12+ rejects it).
+        MonitorService.scheduleWatchdog(context)
+        MonitorService.startMonitorService(context)
     }
 }

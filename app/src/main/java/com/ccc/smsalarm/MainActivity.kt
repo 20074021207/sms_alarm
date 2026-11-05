@@ -54,14 +54,6 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Start monitoring only if enabled; DataStore is disk IO, keep it off the main thread
-        lifecycleScope.launch(Dispatchers.Default) {
-            if (settingsRepository.isMonitoringEnabledSync()) {
-                startForegroundService(Intent(this@MainActivity, MonitorService::class.java))
-                KeepAliveWorker.schedule(this@MainActivity)
-            }
-        }
-
         setContent {
             SmsAlarmTheme {
                 if (!isSetupDone()) {
@@ -74,6 +66,20 @@ class MainActivity : ComponentActivity() {
                 } else {
                     MainContent()
                 }
+            }
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        // Self-heal: every time the app comes to the foreground, make sure the
+        // monitor is alive — the service may have been killed while we were
+        // away. Starting from a visible activity is never restricted.
+        // DataStore is disk IO, keep the read off the main thread.
+        lifecycleScope.launch(Dispatchers.Default) {
+            if (settingsRepository.isMonitoringEnabledSync()) {
+                MonitorService.startMonitorService(this@MainActivity)
+                KeepAliveWorker.schedule(this@MainActivity)
             }
         }
     }
@@ -125,6 +131,7 @@ private fun MainContent() {
             onVibrationChange = { viewModel.updateVibration(it) },
             onFlashlightChange = { viewModel.updateFlashlight(it) },
             onDeleteSms = { viewModel.deleteSms(it) },
+            onDeleteSmsSelected = { viewModel.deleteSmsByIds(it) },
             onDeleteAllSms = { viewModel.deleteAllSms() }
         )
 

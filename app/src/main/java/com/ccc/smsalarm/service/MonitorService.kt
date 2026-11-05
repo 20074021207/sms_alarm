@@ -27,8 +27,33 @@ class MonitorService : Service() {
         const val ACTION_STOP = "com.ccc.smsalarm.ACTION_STOP_MONITOR"
         private const val RESTART_REQUEST_CODE = 1001
         private const val WATCHDOG_REQUEST_CODE = 1002
+        private const val ALARM_CLOCK_SHOW_REQUEST_CODE = 1003
+        private const val START_SERVICE_REQUEST_CODE = 1004
         private const val RESTART_DELAY_MS = 1000L
         private const val WATCHDOG_INTERVAL_MS = 5 * 60_000L // 5 minutes
+
+        /**
+         * Start the monitor from any process state. On Android 12+ a plain
+         * startForegroundService() from the background throws
+         * ForegroundServiceStartNotAllowedException; starting through a
+         * PendingIntent lets the system perform the start on our behalf.
+         */
+        fun startMonitorService(context: Context) {
+            val intent = Intent(context, MonitorService::class.java)
+            try {
+                context.startForegroundService(intent)
+            } catch (e: Exception) {
+                Log.w(TAG, "Direct start rejected, retrying via PendingIntent", e)
+                try {
+                    PendingIntent.getForegroundService(
+                        context, START_SERVICE_REQUEST_CODE, intent,
+                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                    ).send()
+                } catch (e2: Exception) {
+                    Log.e(TAG, "Failed to start MonitorService", e2)
+                }
+            }
+        }
 
         fun scheduleRestart(context: Context, delayMs: Long = RESTART_DELAY_MS) {
             setKeepAliveAlarm(
@@ -58,9 +83,12 @@ class MonitorService : Service() {
         }
 
         /**
-         * Exact alarms (when permitted) both fire more punctually and are on the
-         * Android 12+ exemption list for starting a foreground service from the
-         * background — the plain allow-while-idle variant is not.
+         * setAlarmClock fires exactly on time, survives Doze, needs no
+         * permission, and while it fires the app sits on the system's
+         * temporary allowlist — which is what permits the background
+         * foreground-service start in RestartReceiver. Inexact
+         * setAndAllowWhileIdle alarms are deferred by Doze and grant
+         * no such allowance.
          */
         private fun setKeepAliveAlarm(
             context: Context,
@@ -76,21 +104,26 @@ class MonitorService : Service() {
                     context, requestCode, intent,
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
                 )
-                val canExact = Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
-                    alarmManager.canScheduleExactAlarms()
-                if (canExact) {
-                    alarmManager.setExactAndAllowWhileIdle(
-                        AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent
-                    )
-                } else {
-                    alarmManager.setAndAllowWhileIdle(
-                        AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent
-                    )
-                }
+                alarmManager.setAlarmClock(
+                    AlarmManager.AlarmClockInfo(triggerAtMillis, alarmClockShowIntent(context)),
+                    pendingIntent
+                )
                 onDone()
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to schedule keep-alive alarm", e)
             }
+        }
+
+        private fun alarmClockShowIntent(context: Context): PendingIntent {
+            val intent = Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+            return PendingIntent.getActivity(
+                // Request code must differ from the notification's content intent (0)
+                // so the two PendingIntents don't overwrite each other.
+                context, ALARM_CLOCK_SHOW_REQUEST_CODE, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
         }
     }
 
@@ -109,25 +142,14 @@ class MonitorService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.d(TAG, "onStartCommand: action=${intent?.action}")
 
-        if (intent?.action == ACTION_STOP) {
-            explicitlyStopped = true
-            cancelWatchdog(this)
-            stopForeground(STOP_FOREGROUND_REMOVE)
-            stopSelf()
-            return START_NOT_STICKY
-        }
+        val stopRequested = intent?.action == ACTION_STOP
+        val enabled = !stopRequested && settingsRepository.isMonitoringEnabledSync()
+        explicitlyStopped = stopRequested || !enabled
 
-        // If monitoring is disabled (e.g. system restarted a START_STICKY service), stop immediately
-        if (!settingsRepository.isMonitoringEnabledSync()) {
-            Log.d(TAG, "Monitoring disabled — stopping service")
-            explicitlyStopped = true
-            stopForeground(STOP_FOREGROUND_REMOVE)
-            stopSelf()
-            return START_NOT_STICKY
-        }
-
-        explicitlyStopped = false
-
+        // Enter foreground FIRST. Callers start this service with
+        // startForegroundService(); skipping startForeground() — even when we
+        // intend to stop immediately — crashes the process with
+        // ForegroundServiceDidNotStartInTimeException.
         val notification = buildNotification()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             startForeground(
@@ -136,6 +158,23 @@ class MonitorService : Service() {
             )
         } else {
             startForeground(NOTIFICATION_ID, notification)
+        }
+
+        if (stopRequested) {
+            Log.d(TAG, "Stop requested — stopping service")
+            cancelWatchdog(this)
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
+        // If monitoring is disabled (e.g. system restarted a START_STICKY service), stop immediately
+        if (!enabled) {
+            Log.d(TAG, "Monitoring disabled — stopping service")
+            cancelWatchdog(this)
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+            return START_NOT_STICKY
         }
 
         scheduleWatchdog(this)

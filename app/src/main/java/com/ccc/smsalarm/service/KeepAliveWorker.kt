@@ -1,7 +1,6 @@
 package com.ccc.smsalarm.service
 
 import android.content.Context
-import android.content.Intent
 import android.util.Log
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
@@ -29,12 +28,7 @@ class KeepAliveWorker(
             return Result.success()
         }
 
-        try {
-            val intent = Intent(applicationContext, MonitorService::class.java)
-            applicationContext.startForegroundService(intent)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to start MonitorService", e)
-        }
+        MonitorService.startMonitorService(applicationContext)
         return Result.success()
     }
 

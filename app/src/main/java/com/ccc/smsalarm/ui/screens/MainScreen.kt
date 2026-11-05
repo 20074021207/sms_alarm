@@ -27,6 +27,7 @@ fun MainScreen(
     onVibrationChange: (Boolean) -> Unit,
     onFlashlightChange: (Boolean) -> Unit,
     onDeleteSms: (Long) -> Unit,
+    onDeleteSmsSelected: (List<Long>) -> Unit,
     onDeleteAllSms: () -> Unit
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
@@ -61,6 +62,7 @@ fun MainScreen(
                 0 -> SmsListTab(
                     smsList = smsList,
                     onDeleteSms = onDeleteSms,
+                    onDeleteSmsSelected = onDeleteSmsSelected,
                     onDeleteAllSms = onDeleteAllSms
                 )
                 1 -> ConfigTab(

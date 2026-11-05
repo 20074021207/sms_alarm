@@ -26,4 +26,6 @@ class MatchedSmsRepository @Inject constructor(
     suspend fun deleteSms(id: Long) = matchedSmsDao.deleteById(id)
 
     suspend fun deleteAll() = matchedSmsDao.deleteAll()
+
+    suspend fun deleteByIds(ids: List<Long>) = matchedSmsDao.deleteByIds(ids)
 }

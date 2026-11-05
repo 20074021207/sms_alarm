@@ -74,6 +74,10 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch { matchedSmsRepository.deleteSms(id) }
     }
 
+    fun deleteSmsByIds(ids: List<Long>) {
+        viewModelScope.launch { matchedSmsRepository.deleteByIds(ids) }
+    }
+
     fun deleteAllSms() {
         viewModelScope.launch { matchedSmsRepository.deleteAll() }
     }

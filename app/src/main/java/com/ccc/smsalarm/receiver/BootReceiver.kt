@@ -4,35 +4,40 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import com.ccc.smsalarm.di.AppEntryPoint
 import com.ccc.smsalarm.service.MonitorService
+import dagger.hilt.android.EntryPointAccessors
 
 class BootReceiver : BroadcastReceiver() {
 
     companion object {
         private const val TAG = "BootReceiver"
-
-        // USER_PRESENT / POWER_CONNECTED / POWER_DISCONNECTED deliberately absent:
-        // they are not on the implicit-broadcast exemption list, so a manifest
-        // receiver never fires for them on API 26+ anyway.
-        private val TRIGGER_ACTIONS = setOf(
-            Intent.ACTION_BOOT_COMPLETED,
-            "android.intent.action.QUICKBOOT_POWERON",
-            "com.htc.intent.action.QUICKBOOT_POWERON",
-            Intent.ACTION_MY_PACKAGE_REPLACED
-        )
     }
 
     override fun onReceive(context: Context, intent: Intent) {
         Log.d(TAG, "Received: ${intent.action}")
         val action = intent.action ?: return
 
-        if (action !in TRIGGER_ACTIONS) return
+        // Restart MonitorService on boot / app update.
+        // USER_PRESENT and POWER_* are deliberately NOT handled: implicit
+        // broadcast restrictions killed them for manifest receivers on API 26+.
+        if (action == Intent.ACTION_BOOT_COMPLETED ||
+            action == "android.intent.action.QUICKBOOT_POWERON" ||
+            action == "com.htc.intent.action.QUICKBOOT_POWERON" ||
+            action == Intent.ACTION_MY_PACKAGE_REPLACED
+        ) {
+            // Check the master switch first: starting the service while
+            // monitoring is disabled would just flash a notification and stop.
+            val entryPoint = EntryPointAccessors.fromApplication(
+                context.applicationContext,
+                AppEntryPoint::class.java
+            )
+            if (!entryPoint.settingsRepository().isMonitoringEnabledSync()) {
+                Log.d(TAG, "Monitoring disabled — skipping start")
+                return
+            }
 
-        try {
-            val serviceIntent = Intent(context, MonitorService::class.java)
-            context.startForegroundService(serviceIntent)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to start MonitorService", e)
+            MonitorService.startMonitorService(context)
         }
     }
 }

@@ -43,7 +43,7 @@ No lint configuration is present. The project uses KSP (not kapt).
 2. `AlarmRuleRepository.matchSms()` checks keywords (ANY/ALL match modes)
 3. On match: saves to `MatchedSmsEntity` table → starts `AlarmService` (foreground). If the FGS start fails (Android 12+ background restriction) the receiver falls back to `AlarmService.postFallbackNotification()`
 4. `AlarmService` drives audio (`AudioHelper`), vibration (`VibrationHelper`), flashlight (`FlashlightHelper`); settings are loaded in a coroutine, never via runBlocking
-5. Keep-alive: `MonitorService` (START_STICKY FGS, `stopWithTask=false`) + exact-alarm watchdog (`RestartReceiver`, reschedules itself on failure) + `KeepAliveWorker` (15-min WorkManager) + `BootReceiver` (BOOT_COMPLETED / QUICKBOOT / MY_PACKAGE_REPLACED only — USER_PRESENT and POWER_* are dead on API 26+)
+5. Keep-alive: `MonitorService` (START_STICKY FGS, `stopWithTask=false`, unified start via `MonitorService.startMonitorService` with PendingIntent fallback for Android 12+) + setAlarmClock watchdog (`RestartReceiver` — fires exactly, survives Doze, and its temporary allowlist is what allows the background FGS start) + `KeepAliveWorker` (15-min WorkManager) + `BootReceiver` (BOOT_COMPLETED / QUICKBOOT / MY_PACKAGE_REPLACED only — USER_PRESENT and POWER_* are dead on API 26+)
 
 **Package structure under `com.ccc.smsalarm`:**
 - `data/db/` — Room entities, DAOs, type converters, AppDatabase
@@ -62,7 +62,7 @@ No lint configuration is present. The project uses KSP (not kapt).
 - **VibrationHelper uses USAGE_ALARM attributes** so the pattern survives DND.
 - **AlarmService keeps one service-level scope**, cancelled only in `onDestroy`; per-alarm work goes into `effectsJob` so a re-entrant alarm on the same instance still gets a flashlight.
 - **Keep-alive reality (verified 2026-10 on Huawei P30 Pro / EMUI, Android 10):** swiping the task away force-stops apps whose Huawei 启动管理 is not set to 手动管理 (three toggles on) — the card lock does NOT protect, and after a force-stop nothing in-app can recover (alarms, jobs and broadcasts are all cancelled). The KeepAliveGuideTab therefore puts 启动管理 first as the decisive step. Ordinary (non-force-stop) kills are covered by START_STICKY (~1.4s revival).
-- **Permissions kept minimal:** RECEIVE_SMS only (no READ_SMS — the app never queries the SMS provider), no CAMERA (setTorchMode doesn't need it), no SYSTEM_ALERT_WINDOW (no overlay code). SCHEDULE_EXACT_ALARM is used by the watchdog.
+- **Permissions kept minimal:** RECEIVE_SMS only (no READ_SMS — the app never queries the SMS provider), no CAMERA (setTorchMode doesn't need it), no SYSTEM_ALERT_WINDOW (no overlay code). The keep-alive watchdog uses `setAlarmClock`, which needs no exact-alarm permission.
 
 ## Design Spec
 

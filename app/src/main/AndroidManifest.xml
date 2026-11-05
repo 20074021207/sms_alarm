@@ -25,10 +25,6 @@
     <!-- Boot -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
-    <!-- AlarmManager exact alarm (Android 12+): watchdog/restart alarms must stay
-         exact to qualify for the background foreground-service start exemption. -->
-    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
-
     <application
         android:name=".SmsAlarmApp"
         android:allowBackup="false"
