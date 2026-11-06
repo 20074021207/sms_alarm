@@ -1,6 +1,12 @@
 package com.ccc.smsalarm.ui.screens
 
+import android.content.Context
+import android.content.Intent
 import android.media.AudioManager
+import android.media.RingtoneManager
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -16,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.content.IntentCompat
 import com.ccc.smsalarm.data.db.entity.AlarmRuleEntity
 import com.ccc.smsalarm.data.model.AppSettings
 import com.ccc.smsalarm.data.model.MatchMode
@@ -32,7 +39,8 @@ fun ConfigTab(
     onMonitoringChange: (Boolean) -> Unit,
     onVolumeChange: (Int) -> Unit,
     onVibrationChange: (Boolean) -> Unit,
-    onFlashlightChange: (Boolean) -> Unit
+    onFlashlightChange: (Boolean) -> Unit,
+    onRingtoneChange: (String) -> Unit
 ) {
     var showAddDialog by remember { mutableStateOf(false) }
     var editingRule by remember { mutableStateOf<AlarmRuleEntity?>(null) }
@@ -163,6 +171,63 @@ fun ConfigTab(
         }
 
         item {
+            val context = LocalContext.current
+            var ringtoneTitle by remember(settings.alarmRingtoneUri) {
+                mutableStateOf(resolveRingtoneTitle(context, settings.alarmRingtoneUri))
+            }
+            val ringtonePicker = rememberLauncherForActivityResult(
+                ActivityResultContracts.StartActivityForResult()
+            ) { result ->
+                val picked = result.data?.let {
+                    IntentCompat.getParcelableExtra(
+                        it, RingtoneManager.EXTRA_RINGTONE_PICKED_URI, Uri::class.java
+                    )
+                }
+                // null picked (user backed out / cleared) → back to built-in
+                val chosen = picked?.toString().orEmpty()
+                onRingtoneChange(chosen)
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("告警铃声", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        ringtoneTitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                TextButton(onClick = { onRingtoneChange("") }) {
+                    Text("默认")
+                }
+                TextButton(onClick = {
+                    val intent = Intent(RingtoneManager.ACTION_RINGTONE_PICKER).apply {
+                        putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALARM)
+                        putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, false)
+                        putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
+                        putExtra(
+                            RingtoneManager.EXTRA_RINGTONE_DEFAULT_URI,
+                            RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+                        )
+                        if (settings.alarmRingtoneUri.isNotBlank()) {
+                            putExtra(
+                                RingtoneManager.EXTRA_RINGTONE_EXISTING_URI,
+                                Uri.parse(settings.alarmRingtoneUri)
+                            )
+                        }
+                    }
+                    ringtonePicker.launch(intent)
+                }) {
+                    Text("选择")
+                }
+            }
+        }
+
+        item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -190,6 +255,14 @@ fun ConfigTab(
             }
         }
     }
+}
+
+/** Blank URI = built-in raw ringtone; otherwise resolve the display name, tolerating stale URIs. */
+private fun resolveRingtoneTitle(context: Context, uriString: String): String {
+    if (uriString.isBlank()) return "内置铃声（默认）"
+    return runCatching {
+        RingtoneManager.getRingtone(context, Uri.parse(uriString))?.getTitle(context)
+    }.getOrNull() ?: "自定义铃声"
 }
 
 @Composable

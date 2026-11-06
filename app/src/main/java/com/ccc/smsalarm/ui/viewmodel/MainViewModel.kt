@@ -70,6 +70,10 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch { settingsRepository.updateMonitoring(enabled) }
     }
 
+    fun updateRingtone(uri: String) {
+        viewModelScope.launch { settingsRepository.updateRingtone(uri) }
+    }
+
     fun deleteSms(id: Long) {
         viewModelScope.launch { matchedSmsRepository.deleteSms(id) }
     }

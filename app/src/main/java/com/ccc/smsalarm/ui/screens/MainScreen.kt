@@ -26,6 +26,7 @@ fun MainScreen(
     onVolumeChange: (Int) -> Unit,
     onVibrationChange: (Boolean) -> Unit,
     onFlashlightChange: (Boolean) -> Unit,
+    onRingtoneChange: (String) -> Unit,
     onDeleteSms: (Long) -> Unit,
     onDeleteSmsSelected: (List<Long>) -> Unit,
     onDeleteAllSms: () -> Unit
@@ -75,7 +76,8 @@ fun MainScreen(
                     onMonitoringChange = onMonitoringChange,
                     onVolumeChange = onVolumeChange,
                     onVibrationChange = onVibrationChange,
-                    onFlashlightChange = onFlashlightChange
+                    onFlashlightChange = onFlashlightChange,
+                    onRingtoneChange = onRingtoneChange
                 )
                 2 -> KeepAliveGuideTab()
             }

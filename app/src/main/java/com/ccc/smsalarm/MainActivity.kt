@@ -130,6 +130,7 @@ private fun MainContent() {
             onVolumeChange = { viewModel.updateVolume(it) },
             onVibrationChange = { viewModel.updateVibration(it) },
             onFlashlightChange = { viewModel.updateFlashlight(it) },
+            onRingtoneChange = { viewModel.updateRingtone(it) },
             onDeleteSms = { viewModel.deleteSms(it) },
             onDeleteSmsSelected = { viewModel.deleteSmsByIds(it) },
             onDeleteAllSms = { viewModel.deleteAllSms() }

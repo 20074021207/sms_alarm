@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The built-in ringtone is referenced only via an android.resource:// URI
+     built from R.raw.alarm_default — keep it out of the resource shrinker's
+     reach so release builds never strip it. -->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@raw/alarm_default" />

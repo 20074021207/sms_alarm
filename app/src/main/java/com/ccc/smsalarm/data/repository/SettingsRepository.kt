@@ -26,6 +26,7 @@ class SettingsRepository @Inject constructor(
         val ALARM_VOLUME = intPreferencesKey("alarm_volume")
         val ENABLE_VIBRATION = booleanPreferencesKey("enable_vibration")
         val ENABLE_FLASHLIGHT = booleanPreferencesKey("enable_flashlight")
+        val ALARM_RINGTONE = stringPreferencesKey("alarm_ringtone")
     }
 
     val settings: Flow<AppSettings> = context.dataStore.data
@@ -38,7 +39,8 @@ class SettingsRepository @Inject constructor(
                 monitoringEnabled = prefs[Keys.MONITORING_ENABLED] ?: true,
                 alarmVolume = prefs[Keys.ALARM_VOLUME] ?: -1,
                 enableVibration = prefs[Keys.ENABLE_VIBRATION] ?: true,
-                enableFlashlight = prefs[Keys.ENABLE_FLASHLIGHT] ?: true
+                enableFlashlight = prefs[Keys.ENABLE_FLASHLIGHT] ?: true,
+                alarmRingtoneUri = prefs[Keys.ALARM_RINGTONE] ?: ""
             )
         }
 
@@ -56,6 +58,11 @@ class SettingsRepository @Inject constructor(
 
     suspend fun updateMonitoring(enabled: Boolean) {
         context.dataStore.edit { it[Keys.MONITORING_ENABLED] = enabled }
+    }
+
+    /** Empty/blank string selects the built-in raw ringtone. */
+    suspend fun updateRingtone(uri: String) {
+        context.dataStore.edit { it[Keys.ALARM_RINGTONE] = uri }
     }
 
     /**

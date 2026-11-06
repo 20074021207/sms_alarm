@@ -32,7 +32,10 @@ class VibrationHelper @Inject constructor(
         val amplitudes = intArrayOf(0, 255, 0)
         val effect = VibrationEffect.createWaveform(timings, amplitudes, 0)
         // USAGE_ALARM keeps the pattern vibrating under DND, matching the alarm sound.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        // VibrationAttributes itself is API 29 but its Builder only landed in
+        // API 30 — gating on Q crashed Android 10 devices with
+        // NoClassDefFoundError (caught on-device 2026-11).
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             vibrator.vibrate(
                 effect,
                 VibrationAttributes.Builder()

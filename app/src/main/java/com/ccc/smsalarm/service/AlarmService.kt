@@ -143,7 +143,7 @@ class AlarmService : Service() {
             val settings = settingsRepository.settings.first()
             // Each effect stands on its own: one ROM-specific failure (ringtone
             // missing, vibrator busy, camera service down) must not silence the rest.
-            runCatching { audioHelper.startAlarm(settings.alarmVolume) }
+            runCatching { audioHelper.startAlarm(settings.alarmVolume, settings.alarmRingtoneUri) }
                 .onFailure { Log.e(TAG, "Alarm sound failed", it) }
             if (settings.enableVibration) {
                 runCatching { vibrationHelper.startVibration() }
