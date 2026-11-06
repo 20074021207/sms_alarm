@@ -103,6 +103,7 @@ private fun MainContent() {
     val rules by viewModel.rules.collectAsState()
     val settings by viewModel.settings.collectAsState()
     val alarmInfo by AlarmState.state.collectAsState()
+    val alarmTesting by viewModel.alarmTesting.collectAsState()
 
     Box(modifier = Modifier.fillMaxSize()) {
         MainScreen(
@@ -131,6 +132,10 @@ private fun MainContent() {
             onVibrationChange = { viewModel.updateVibration(it) },
             onFlashlightChange = { viewModel.updateFlashlight(it) },
             onRingtoneChange = { viewModel.updateRingtone(it) },
+            alarmTesting = alarmTesting,
+            onTestAlarmToggle = {
+                if (alarmTesting) viewModel.stopAlarmTest() else viewModel.startAlarmTest()
+            },
             onDeleteSms = { viewModel.deleteSms(it) },
             onDeleteSmsSelected = { viewModel.deleteSmsByIds(it) },
             onDeleteAllSms = { viewModel.deleteAllSms() }

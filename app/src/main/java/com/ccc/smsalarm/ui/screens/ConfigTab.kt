@@ -40,7 +40,9 @@ fun ConfigTab(
     onVolumeChange: (Int) -> Unit,
     onVibrationChange: (Boolean) -> Unit,
     onFlashlightChange: (Boolean) -> Unit,
-    onRingtoneChange: (String) -> Unit
+    onRingtoneChange: (String) -> Unit,
+    alarmTesting: Boolean,
+    onTestAlarmToggle: () -> Unit
 ) {
     var showAddDialog by remember { mutableStateOf(false) }
     var editingRule by remember { mutableStateOf<AlarmRuleEntity?>(null) }
@@ -251,6 +253,26 @@ fun ConfigTab(
                 Switch(
                     checked = settings.enableFlashlight,
                     onCheckedChange = onFlashlightChange
+                )
+            }
+        }
+
+        item {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Button(
+                    onClick = onTestAlarmToggle,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = if (alarmTesting)
+                        ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                    else
+                        ButtonDefaults.buttonColors()
+                ) {
+                    Text(if (alarmTesting) "停止测试" else "测试告警效果")
+                }
+                Text(
+                    text = "按当前设置播放铃声、震动与闪光 10 秒（不发短信、不留记录）",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
